@@ -1,0 +1,189 @@
+/* 🔥 GLOBAL */
+body {
+  margin: 0;
+  background-color: #0f172a;
+  color: #e2e8f0;
+  font-family: "Inter", Arial, sans-serif;
+}
+
+/* LAYOUT */
+.app {
+  display: flex;
+  height: 100vh;
+  overflow: hidden; /* 🔥 prevents full page overflow */
+}
+
+/* LEFT PANEL */
+.left {
+  width: 40%;
+  padding: 20px;
+  border-right: 1px solid #1e293b;
+  overflow-y: auto;
+}
+
+/* RIGHT PANEL */
+.right {
+  width: 60%;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+/* TEXT */
+h2 {
+  margin-bottom: 5px;
+}
+
+.desc {
+  color: #94a3b8;
+  font-size: 14px;
+}
+
+/* META INFO */
+.meta {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0;
+}
+
+.difficulty {
+  color: #22c55e;
+  font-weight: bold;
+}
+
+.timer {
+  color: #38bdf8;
+}
+
+/* =========================
+   🔥 BOXES (FIXED)
+========================= */
+.box {
+  background: #020617;
+  padding: 12px;
+  margin-top: 12px;
+  border-radius: 10px;
+  border: 1px solid #1e293b;
+
+  max-height: 180px;        /* 🔥 prevents overflow */
+  overflow-y: auto;         /* 🔥 scroll inside */
+  overflow-x: auto;
+
+  white-space: pre-wrap;    /* 🔥 wrap text */
+  word-break: break-word;
+}
+
+.box h4 {
+  margin-bottom: 6px;
+}
+
+/* =========================
+   OUTPUT TEXT (CRITICAL)
+========================= */
+pre {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+  color: #22c55e;
+
+  white-space: pre-wrap;    /* 🔥 wrap long lines */
+  word-break: break-word;
+}
+
+/* =========================
+   TEST RESULTS
+========================= */
+.test-row {
+  display: flex;
+  justify-content: space-between;
+  padding: 4px 0;
+  font-size: 14px;
+  flex-wrap: wrap; /* 🔥 prevents overflow */
+}
+
+.pass {
+  color: #22c55e;
+  font-weight: bold;
+}
+
+.fail {
+  color: #ef4444;
+  font-weight: bold;
+}
+
+/* =========================
+   EDITOR
+========================= */
+.editor {
+  width: 100%;
+  height: 75%;
+  background: #020617;
+  color: #22c55e;
+  font-family: monospace;
+  font-size: 14px;
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid #1e293b;
+  outline: none;
+
+  overflow: auto; /* 🔥 prevents overflow */
+}
+
+/* =========================
+   BUTTONS
+========================= */
+.buttons {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap; /* 🔥 responsive */
+  gap: 10px;
+}
+
+button {
+  padding: 8px 14px;
+  background: #1e293b;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: 0.2s;
+}
+
+button:hover {
+  background: #334155;
+}
+
+button:active {
+  transform: scale(0.95);
+}
+
+/* END BUTTON */
+.end {
+  background: #ef4444;
+}
+
+.end:hover {
+  background: #dc2626;
+}
+
+/* =========================
+   SCORE
+========================= */
+.score {
+  margin-top: 15px;
+  font-weight: bold;
+  font-size: 16px;
+}
+
+/* =========================
+   SCROLLBAR (clean)
+========================= */
+::-webkit-scrollbar {
+  width: 6px;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 4px;
+}
