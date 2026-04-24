@@ -3,6 +3,7 @@ from pydantic import BaseModel
 from typing import List
 import hashlib
 import time
+import random
 
 router = APIRouter()
 
@@ -116,7 +117,8 @@ questions_big = {
 
 @router.get("/questions/{difficulty}")
 def get_questions(difficulty: str):
-    return questions_big.get(difficulty, [])
+
+  return random.choice(questions_big.get(difficulty, []))
 
 
 # =========================

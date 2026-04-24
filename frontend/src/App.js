@@ -1,199 +1,160 @@
-import { useEffect, useState } from "react";
-import API from "./api";
+import React, { useEffect, useState } from "react";
+import {
+  getQuestions,
+  runCode,
+  runTests,
+  getAIFeedback,
+} from "./api";
 import "./App.css";
 
 function App() {
   const [question, setQuestion] = useState(null);
   const [code, setCode] = useState("");
   const [output, setOutput] = useState("");
-  const [testResults, setTestResults] = useState([]);
+  const [tests, setTests] = useState([]);
   const [score, setScore] = useState(0);
   const [verdict, setVerdict] = useState("");
   const [feedback, setFeedback] = useState("");
-  const [aiFeedback, setAIFeedback] = useState("");
-  const [followups, setFollowups] = useState([]);
-  const [submitted, setSubmitted] = useState(false);
   const [difficulty, setDifficulty] = useState("easy");
-  const [loading, setLoading] = useState(false);
 
-  // ⏱ TIMER
-  const [timeLeft, setTimeLeft] = useState(600);
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState(false);
+
+  // ⏱️ TIMER
+  const [timeLeft, setTimeLeft] = useState(300); // 5 min
+
+  // =========================
+  // LOAD QUESTION
+  // =========================
+  const loadQuestion = async () => {
+    try {
+      setLoading(true);
+
+      const res = await getQuestions(difficulty);
+      const q = Array.isArray(res.data) ? res.data[0] : res.data;
+
+      setQuestion(q);
+
+      setCode(`def solution():
+    # Write your code here
+    pass`);
+
+      setOutput("");
+      setTests([]);
+      setScore(0);
+      setVerdict("");
+      setFeedback("");
+
+      setTimeLeft(300); // 🔥 reset timer
+    } catch (err) {
+      console.error(err);
+      alert("Failed to load question");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    if (timeLeft <= 0 || submitted) return;
+    loadQuestion();
+  }, [difficulty]);
+
+  // =========================
+  // TIMER LOGIC
+  // =========================
+  useEffect(() => {
+    if (timeLeft <= 0) return;
 
     const timer = setInterval(() => {
       setTimeLeft((prev) => prev - 1);
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [timeLeft, submitted]);
-
-  const formatTime = () => {
-    const m = Math.floor(timeLeft / 60);
-    const s = timeLeft % 60;
-    return `${m}:${s < 10 ? "0" : ""}${s}`;
-  };
-
-  // =========================
-  // 📥 LOAD QUESTION
-  // =========================
-  const loadQuestion = async () => {
-    setLoading(true);
-    try {
-      console.log("API:", API.defaults.baseURL);
-
-      const res = await API.get(`/questions/${difficulty}`);
-
-      if (!res.data || res.data.length === 0) {
-        alert("No questions found from backend");
-        return;
-      }
-
-      const q = res.data[Math.floor(Math.random() * res.data.length)];
-
-      setQuestion(q);
-      setCode("");
-      setOutput("");
-      setTestResults([]);
-      setScore(0);
-      setVerdict("");
-      setFeedback("");
-      setFollowups([]);
-      setAIFeedback("");
-      setTimeLeft(600);
-      setSubmitted(false);
-    } catch (err) {
-      console.error(err);
-      alert("Backend not responding (Render may be sleeping)");
-    }
-    setLoading(false);
-  };
+  }, [timeLeft]);
 
   useEffect(() => {
-    if (!submitted) {
-      loadQuestion();
+    if (timeLeft === 0) {
+      handleSubmit();
+      alert("⏱️ Time's up!");
     }
-  }, [difficulty, submitted]);
+  }, [timeLeft]);
 
   // =========================
-  // ▶ RUN CODE
+  // SAFE CALL
   // =========================
-  const handleRun = async () => {
-    if (!code.trim()) return alert("Write code first");
+  const safeCall = async (fn) => {
+    if (actionLoading) return;
 
-    setLoading(true);
     try {
-      const res = await API.post("/code/run", { code });
-
-      setOutput(
-        res.data.stdout ||
-          res.data.stderr ||
-          "⚠️ No output (did you forget print?)"
-      );
-    } catch {
-      setOutput("Error running code");
-    }
-    setLoading(false);
-  };
-
-  // =========================
-  // 🧪 RUN TESTS
-  // =========================
-  const handleTest = async () => {
-    if (!code.trim()) return alert("Write code first");
-
-    setLoading(true);
-    try {
-      const res = await API.post("/code/test", {
-        code,
-        question: question?.title?.toLowerCase(),
-      });
-
-      setTestResults(res.data.results || []);
-    } catch {
-      alert("Test failed");
-    }
-    setLoading(false);
-  };
-
-  // =========================
-  // 🚀 SUBMIT
-  // =========================
-  const handleSubmit = async () => {
-    if (!code.trim()) return alert("Write code first");
-
-    setLoading(true);
-    try {
-      const res = await API.post("/evaluate", {
-        code,
-        question: question?.title,
-        difficulty,
-      });
-
-      setScore(res.data.score);
-      setVerdict(res.data.verdict);
-      setFeedback(res.data.feedback);
-      setFollowups(res.data.followups || []);
-
-      if (res.data.plagiarism) {
-        alert(`Plagiarism: ${res.data.plagiarism.similarity}%`);
-      }
-
-      if (res.data.next_difficulty) {
-        setDifficulty(res.data.next_difficulty);
-      }
-
-      setSubmitted(true);
+      setActionLoading(true);
+      await fn();
     } catch (err) {
       console.error(err);
-      alert("Submit failed");
+      alert("Something went wrong");
+    } finally {
+      setActionLoading(false);
     }
-    setLoading(false);
   };
 
   // =========================
-  // 🤖 AI FEEDBACK
+  // ACTIONS
   // =========================
-  const handleAIFeedback = async () => {
-    if (!code.trim()) return alert("Write code first");
+  const handleRun = () =>
+    safeCall(async () => {
+      const res = await runCode(code);
+      setOutput(res.data.output || res.data.stdout || "No output");
+    });
 
-    setLoading(true);
-    try {
-      const res = await API.post("/ai/feedback", {
-        code,
-        question: question?.title,
-      });
+  const handleRunTests = () =>
+    safeCall(async () => {
+      const res = await runTests(code, question?.title);
 
-      setAIFeedback(res.data.feedback);
-    } catch {
-      alert("AI feedback failed");
-    }
-    setLoading(false);
-  };
+      setTests(res.data.results || []);
+      setScore(res.data.score || 0);
+      setVerdict(res.data.verdict || "");
+    });
 
-  if (loading && !question) return <h2>Loading question...</h2>;
-  if (!question) return <h2>No question loaded</h2>;
+  const handleSubmit = () =>
+    safeCall(async () => {
+      const res = await runTests(code, question?.title);
+
+      setTests(res.data.results || []);
+      setScore(res.data.score || 0);
+      setVerdict(res.data.verdict || "");
+    });
+
+  const handleAI = () =>
+    safeCall(async () => {
+      const res = await getAIFeedback(code, question?.title);
+      setFeedback(res.data.feedback);
+    });
+
+  // =========================
+  // UI
+  // =========================
+  if (loading || !question) {
+    return <h2 style={{ padding: "20px" }}>Loading...</h2>;
+  }
 
   return (
     <div className="app">
       <div className="left">
         <h2>{question.title}</h2>
-        <p className="desc">{question.description}</p>
+        <p>{question.description}</p>
 
-        <div className="meta">
-          <span className="difficulty">{difficulty.toUpperCase()}</span>
-          <span className="timer">⏱ {formatTime()}</span>
+        {/* ⏱️ TIMER UI */}
+        <div className="box">
+          <h4>Time Left</h4>
+          <p>
+            {Math.floor(timeLeft / 60)}:
+            {String(timeLeft % 60).padStart(2, "0")}
+          </p>
         </div>
 
         <div className="box">
           <h4>Difficulty</h4>
           <select
             value={difficulty}
-            onChange={(e) => {
-              setSubmitted(false);
-              setDifficulty(e.target.value);
-            }}
+            onChange={(e) => setDifficulty(e.target.value)}
           >
             <option value="easy">Easy</option>
             <option value="medium">Medium</option>
@@ -203,48 +164,29 @@ function App() {
 
         <div className="box">
           <h4>Output</h4>
-          <pre>{output || "Run code to see output"}</pre>
+          <pre>{output || "Run code"}</pre>
         </div>
 
         <div className="box">
           <h4>Tests</h4>
-          {testResults.length === 0 ? (
-            <p>No tests run yet</p>
-          ) : (
-            testResults.map((t, i) => (
-              <div key={i} className="test-row">
-                <span>{String(t.input)}</span>
-                <span className={t.status === "PASS" ? "pass" : "fail"}>
-                  {t.status}
-                </span>
-              </div>
-            ))
-          )}
+          {tests.length === 0
+            ? "Run tests"
+            : tests.map((t, i) => (
+                <div key={i}>
+                  {t.input} → {t.passed ? "PASS" : "FAIL"}
+                </div>
+              ))}
         </div>
 
         <div className="box">
           <h4>Score</h4>
-          <p>{feedback}</p>
-          <p>
-            <b>{score}</b> | {verdict}
-          </p>
+          {score} {verdict}
         </div>
 
-        {aiFeedback && (
-          <div className="box">
-            <h4>🤖 AI Feedback</h4>
-            <p>{aiFeedback}</p>
-          </div>
-        )}
-
-        {followups.length > 0 && (
-          <div className="box">
-            <h4>Follow-up Questions</h4>
-            {followups.map((q, i) => (
-              <div key={i}>• {q}</div>
-            ))}
-          </div>
-        )}
+        <div className="box">
+          <h4>AI Feedback</h4>
+          {feedback || "Click AI Review"}
+        </div>
       </div>
 
       <div className="right">
@@ -252,30 +194,23 @@ function App() {
           className="editor"
           value={code}
           onChange={(e) => setCode(e.target.value)}
-          placeholder="Write your code here..."
         />
 
         <div className="buttons">
-          <button onClick={handleRun} disabled={loading}>
+          <button disabled={actionLoading} onClick={handleRun}>
             Run
           </button>
-          <button onClick={handleTest} disabled={loading}>
+          <button disabled={actionLoading} onClick={handleRunTests}>
             Run Tests
           </button>
-          <button onClick={handleSubmit} disabled={loading}>
+          <button disabled={actionLoading} onClick={handleSubmit}>
             Submit
           </button>
-          <button onClick={handleAIFeedback} disabled={loading}>
+          <button disabled={actionLoading} onClick={handleAI}>
             AI Review
           </button>
-
-          <button
-            onClick={() => {
-              setSubmitted(false);
-              loadQuestion();
-            }}
-          >
-            Next →
+          <button disabled={actionLoading} onClick={loadQuestion}>
+            Next
           </button>
         </div>
       </div>

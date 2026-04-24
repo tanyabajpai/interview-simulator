@@ -1,49 +1,47 @@
 import axios from "axios";
 
-// ==========================
-// 🌐 BASE CONFIG
-// ==========================
+// ⚠️ FORCE LOCAL BACKEND (VERY IMPORTANT)
 const API = axios.create({
-  baseURL: "https://interview-simulator-q3hl.onrender.com",
+  baseURL: "http://localhost:8000",
   headers: {
     "Content-Type": "application/json",
   },
 });
 
-// ==========================
-// ⚠️ ERROR HANDLER
-// ==========================
-API.interceptors.response.use(
-  (response) => response,
-  (error) => {
-    console.error("API ERROR:", error?.response || error.message);
+// =========================
+// QUESTIONS (FIXED)
+// =========================
+export const getQuestions = (difficulty) => {
+  return API.get(`/questions/${difficulty}`, {
+    headers: {
+      "Cache-Control": "no-cache",   // 🔥 prevent caching
+    },
+  });
+};
 
-    if (error.response) {
-      alert(`Backend Error: ${error.response.status}`);
-    } else {
-      alert("Server not reachable");
-    }
-
-    return Promise.reject(error);
-  }
-);
-
-// ==========================
-// 📡 API CALLS
-// ==========================
+// =========================
+// CODE
+// =========================
 export const runCode = (code) =>
   API.post("/code/run", { code });
 
-export const runTests = (code, question) =>
-  API.post("/code/test", { code, question });
+export const runTests = (code, questionTitle) =>
+  API.post("/code/test", {
+    code,
+    question: questionTitle,
+  });
 
-export const submitCode = (code, question, difficulty) =>
-  API.post("/evaluate", { code, question, difficulty });
+export const submitCode = (code, questionTitle, difficulty) =>
+  API.post("/evaluate", {
+    code,
+    question: questionTitle,
+    difficulty,
+  });
 
-export const getQuestions = (difficulty) =>
-  API.get(`/questions/${difficulty}`);
-
-export const getAIFeedback = (code, question) =>
-  API.post("/ai/feedback", { code, question });
+export const getAIFeedback = (code, questionTitle) =>
+  API.post("/ai/feedback", {
+    code,
+    question: questionTitle,
+  });
 
 export default API;
