@@ -5,6 +5,8 @@ from services.test_runner import run_tests
 from services.interviewer import generate_followups, next_difficulty
 from services.plagiarism import check_plagiarism
 from services.question_bank import QUESTION_BANK
+from services.user_service import save_attempt
+from services.db import attempts_collection
 
 router = APIRouter()
 
@@ -112,6 +114,28 @@ def evaluate_answer(data: AnswerInput):
     followups = generate_followups(code, question_title, passed, total)
     plagiarism = check_plagiarism(code)
     next_diff = next_difficulty(data.difficulty, final_score)
+
+    # =========================
+    # 💾 SAVE USER PROGRESS
+    # =========================
+    save_attempt(
+        "guest",  # later replace with real auth
+        {
+            "question": question_title,
+            "score": final_score,
+            "passed": passed,
+            "total": total
+        }
+    )
+
+    attempts_collection.insert_one({
+    "username": "guest",  # later from token
+    "question": question_title,
+    "score": final_score,
+    "passed": passed,
+    "total": total
+        }
+    )
 
     # =========================
     # ✅ FINAL RESPONSE (FIXED)

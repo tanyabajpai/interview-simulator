@@ -1,6 +1,5 @@
 import axios from "axios";
 
-// ⚠️ FORCE LOCAL BACKEND (VERY IMPORTANT)
 const API = axios.create({
   baseURL: "http://localhost:8000",
   headers: {
@@ -9,15 +8,21 @@ const API = axios.create({
 });
 
 // =========================
-// QUESTIONS (FIXED)
+// AUTH
 // =========================
-export const getQuestions = (difficulty) => {
-  return API.get(`/questions/${difficulty}`, {
-    headers: {
-      "Cache-Control": "no-cache",   // 🔥 prevent caching
-    },
+export const signup = (data) =>
+  API.post("/user/signup", data);
+
+export const login = (data) =>
+  API.post("/user/login", data);
+
+// =========================
+// QUESTIONS
+// =========================
+export const getQuestions = (difficulty) =>
+  API.get(`/questions/${difficulty}`, {
+    headers: { "Cache-Control": "no-cache" },
   });
-};
 
 // =========================
 // CODE
@@ -31,17 +36,30 @@ export const runTests = (code, questionTitle) =>
     question: questionTitle,
   });
 
-export const submitCode = (code, questionTitle, difficulty) =>
-  API.post("/evaluate", {
-    code,
-    question: questionTitle,
-    difficulty,
-  });
-
 export const getAIFeedback = (code, questionTitle) =>
   API.post("/ai/feedback", {
     code,
     question: questionTitle,
   });
+
+// =========================
+// 🔐 PROTECTED ROUTES
+// =========================
+export const saveAttempt = (data, token) =>
+  API.post("/user/save", data, {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+export const getStats = (token) =>
+  API.get("/user/stats", {
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+export const getLeaderboard = () =>
+  API.get("/leaderboard/leaderboard");
 
 export default API;

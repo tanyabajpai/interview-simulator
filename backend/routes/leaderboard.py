@@ -1,15 +1,14 @@
 from fastapi import APIRouter
+from services.db import users_collection
 
 router = APIRouter()
 
-leaderboard = []
-
-@router.post("/submit-score")
-def submit_score(username: str, score: int):
-    leaderboard.append({"user": username, "score": score})
-    leaderboard.sort(key=lambda x: x["score"], reverse=True)
-    return {"leaderboard": leaderboard[:10]}
-
 @router.get("/leaderboard")
 def get_leaderboard():
-    return leaderboard[:10]
+    users = list(
+        users_collection.find({}, {"_id": 0, "username": 1, "best_score": 1})
+        .sort("best_score", -1)
+        .limit(10)
+    )
+
+    return {"leaderboard": users}
