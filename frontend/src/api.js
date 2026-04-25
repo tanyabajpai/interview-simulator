@@ -8,6 +8,22 @@ const API = axios.create({
 });
 
 // =========================
+// 🔐 AUTO TOKEN HANDLER
+// =========================
+const getAuthHeader = () => {
+  const token = localStorage.getItem("token");
+
+  if (!token) {
+    console.log("❌ No token found");
+    return {};
+  }
+
+  return {
+    Authorization: `Bearer ${token}`,
+  };
+};
+
+// =========================
 // AUTH
 // =========================
 export const signup = (data) =>
@@ -20,9 +36,7 @@ export const login = (data) =>
 // QUESTIONS
 // =========================
 export const getQuestions = (difficulty) =>
-  API.get(`/questions/${difficulty}`, {
-    headers: { "Cache-Control": "no-cache" },
-  });
+  API.get(`/questions/${difficulty}`);
 
 // =========================
 // CODE
@@ -43,23 +57,37 @@ export const getAIFeedback = (code, questionTitle) =>
   });
 
 // =========================
-// 🔐 PROTECTED ROUTES
+// 🔐 PROTECTED ROUTES (SAFE)
 // =========================
-export const saveAttempt = (data, token) =>
-  API.post("/user/save", data, {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+export const saveAttempt = async (data) => {
+  return API.post("/user/save", data, {
+    headers: getAuthHeader(),
   });
+};
 
-export const getStats = (token) =>
-  API.get("/user/stats", {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
+export const getStats = async () => {
+  return API.get("/user/stats", {
+    headers: getAuthHeader(),
   });
+};
 
-export const getLeaderboard = () =>
-  API.get("/leaderboard/leaderboard");
+export const getHistory = async () => {
+  return API.get("/attempts/history", {
+    headers: getAuthHeader(),
+  });
+};
+
+// =========================
+// 🏆 LEADERBOARD (SAFE FIX)
+// =========================
+export const getLeaderboard = async () => {
+  const res = await API.get("/leaderboard/leaderboard");
+
+  // 🔥 normalize response
+  if (Array.isArray(res.data)) return { data: res.data };
+  if (Array.isArray(res.data.leaderboard)) return { data: res.data.leaderboard };
+
+  return { data: [] };
+};
 
 export default API;

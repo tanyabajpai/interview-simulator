@@ -5,6 +5,10 @@ from services.db import users_collection, attempts_collection
 from services.auth_service import hash_password, verify_password, create_access_token
 from services.deps import get_current_user
 
+from fastapi import APIRouter, HTTPException, Depends
+from datetime import datetime
+from services.deps import get_current_user
+
 router = APIRouter()
 
 
@@ -60,20 +64,14 @@ def login(data: UserLogin):
 # =========================
 # 🔐 SAVE ATTEMPT (PROTECTED)
 # =========================
+
 @router.post("/save")
 def save_attempt(data: dict, username: str = Depends(get_current_user)):
     data["username"] = username
+    data["timestamp"] = datetime.utcnow()
 
     attempts_collection.insert_one(data)
-
-    # 🔥 UPDATE BEST SCORE
-    users_collection.update_one(
-        {"username": username},
-        {"$max": {"best_score": data.get("score", 0)}}
-    )
-
-    return {"message": "Saved successfully"}
-
+    return {"message": "Saved"}
 
 # =========================
 # 📊 USER STATS (PROTECTED)
