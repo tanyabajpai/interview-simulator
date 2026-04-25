@@ -6,7 +6,17 @@ import random
 
 QUESTION_BANK = {
     "easy": [
-        {"title": "Reverse String", "description": "Reverse a string."},
+        {
+    "title": "Reverse String",
+    "description": "Reverse a string.",
+    "function_name": "solution",
+    "test_cases": [
+        {"input": "hello", "output": "olleh"},
+        {"input": "abc", "output": "cba"},
+        {"input": "", "output": ""},
+        {"input": "a", "output": "a"}
+    ]
+},
         {"title": "Palindrome Check", "description": "Check if string is palindrome."},
         {"title": "Factorial", "description": "Calculate factorial of a number."},
         {"title": "Fibonacci Number", "description": "Return nth Fibonacci number."},
