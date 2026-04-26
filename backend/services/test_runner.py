@@ -45,6 +45,47 @@ TEST_CASES = {
             {"input": ([3, 2, 4], 6), "expected": [1, 2]},
         ],
     },
+
+    # ✅ ADD THIS
+    "Lowercase String": {
+        "public": [
+            {"input": "HELLO", "expected": "hello"},
+            {"input": "Python", "expected": "python"},
+        ],
+        "hidden": [
+            {"input": "", "expected": ""},
+            {"input": "ABC123", "expected": "abc123"},
+        ],
+    },
+
+    # ✅ ADD MORE (IMPORTANT)
+    "Find Length": {
+        "public": [
+            {"input": "hello", "expected": 5},
+        ],
+        "hidden": [
+            {"input": "", "expected": 0},
+        ],
+    },
+
+    "Square Number": {
+        "public": [
+            {"input": 4, "expected": 16},
+        ],
+        "hidden": [
+            {"input": 0, "expected": 0},
+        ],
+    },
+
+    "Check Prime": {
+        "public": [
+            {"input": 5, "expected": True},
+            {"input": 4, "expected": False},
+        ],
+        "hidden": [
+            {"input": 1, "expected": False},
+        ],
+    },
 }
 
 

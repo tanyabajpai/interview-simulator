@@ -1,14 +1,34 @@
 from fastapi import APIRouter
-from services.db import users_collection
+from services.db import attempts_collection
 
 router = APIRouter()
 
+
 @router.get("/leaderboard")
 def get_leaderboard():
-    users = list(
-        users_collection.find({}, {"_id": 0, "username": 1, "best_score": 1})
-        .sort("best_score", -1)
-        .limit(10)
-    )
+    pipeline = [
+        {
+            "$group": {
+                "_id": "$username",
+                "score": {"$avg": "$score"}   # average score
+            }
+        },
+        {
+            "$sort": {"score": -1}
+        },
+        {
+            "$limit": 10
+        }
+    ]
 
-    return {"leaderboard": users}
+    results = list(attempts_collection.aggregate(pipeline))
+
+    leaderboard = [
+        {
+            "username": r["_id"],
+            "score": int(r["score"])
+        }
+        for r in results
+    ]
+
+    return leaderboard
