@@ -111,15 +111,7 @@ cd interview-simulator
 cd backend
 pip install -r requirements.txt
 ```
-
-Create `.env` file:
-
-```env
-MONGO_URI=your_mongodb_connection_string
-SECRET_KEY=your_secret_key
-```
-
-Run backend:
+### Run backend:
 
 ```bash
 uvicorn main:app --reload
