@@ -99,7 +99,7 @@ A full-stack **Interview Preparation Platform** that simulates real coding inter
 ### 1️⃣ Clone Repository
 
 ```bash
-git clone https://github.com/your-username/interview-simulator.git
+git clone [https://github.com/tanyabajpai/interview-simulator]
 cd interview-simulator
 ```
 
@@ -173,7 +173,6 @@ npm start
 ### 📊 Stats Panel
 
 <img width="959" height="1022" alt="Screenshot 2026-04-26 132343" src="https://github.com/user-attachments/assets/7653080d-0eb9-4b47-af11-6914b9aed6c5" />
-<img width="959" height="1022" alt="Screenshot 2026-04-26 132308" src="https://github.com/user-attachments/assets/5635d5ad-e5b7-4b6f-aab9-c6c2c9fd2ec3" />
 
 ### 🏆 Leaderboard &AI Feedback
 
