@@ -3,15 +3,19 @@ import tempfile
 import os
 import textwrap
 
+
 def run_code(code: str):
     try:
-        # 🔥 Wrap user code to actually CALL solution()
-        wrapped_code = f"""
-{code}
+        wrapped_code = f"""{code}
 
 if __name__ == "__main__":
     try:
-        print(solution("hello"))  # default test input
+        result = solution()
+        if result is not None:
+            print(result)
+    except TypeError as e:
+        print("Error:", e)
+        print("Tip: your solution() should accept the input as a parameter, e.g. def solution(s):")
     except Exception as e:
         print("Error:", e)
 """
@@ -21,7 +25,7 @@ if __name__ == "__main__":
             temp_path = temp.name
 
         result = subprocess.run(
-            ["python", temp_path],
+            ["python3", temp_path],
             capture_output=True,
             text=True,
             timeout=5
@@ -29,12 +33,15 @@ if __name__ == "__main__":
 
         os.remove(temp_path)
 
+        output = result.stdout.strip()
+        stderr = result.stderr.strip()
+
         return {
-            "stdout": result.stdout.strip(),
-            "stderr": result.stderr.strip()
+            "stdout": output if output else stderr,
+            "stderr": stderr
         }
 
+    except subprocess.TimeoutExpired:
+        return {"stdout": "Time Limit Exceeded (5s)", "stderr": ""}
     except Exception as e:
-        return {
-            "error": str(e)
-        }
+        return {"stdout": "", "stderr": str(e)}

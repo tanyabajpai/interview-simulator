@@ -8,19 +8,12 @@ const API = axios.create({
 });
 
 // =========================
-// 🔐 AUTO TOKEN HANDLER
+// AUTO TOKEN HANDLER
 // =========================
 const getAuthHeader = () => {
   const token = localStorage.getItem("token");
-
-  if (!token) {
-    console.log("❌ No token found");
-    return {};
-  }
-
-  return {
-    Authorization: `Bearer ${token}`,
-  };
+  if (!token) return {};
+  return { Authorization: `Bearer ${token}` };
 };
 
 // =========================
@@ -35,6 +28,7 @@ export const login = (data) =>
 // =========================
 // QUESTIONS
 // =========================
+// Returns axios response: res.data = single question object
 export const getQuestions = (difficulty) =>
   API.get(`/questions/${difficulty}`);
 
@@ -57,37 +51,29 @@ export const getAIFeedback = (code, questionTitle) =>
   });
 
 // =========================
-// 🔐 PROTECTED ROUTES (SAFE)
+// PROTECTED ROUTES
+// All use getAuthHeader() internally — no token param needed
 // =========================
-export const saveAttempt = async (data) => {
-  return API.post("/user/save", data, {
+export const saveAttempt = (data) =>
+  API.post("/user/save", data, {
     headers: getAuthHeader(),
   });
-};
 
-export const getStats = async () => {
-  return API.get("/user/stats", {
+export const getStats = () =>
+  API.get("/user/stats", {
     headers: getAuthHeader(),
   });
-};
 
-export const getHistory = async () => {
-  return API.get("/attempts/history", {
+export const getHistory = () =>
+  API.get("/attempts/history", {
     headers: getAuthHeader(),
   });
-};
 
 // =========================
-// 🏆 LEADERBOARD (SAFE FIX)
+// LEADERBOARD
+// Returns standard axios response — no manual wrapping
 // =========================
-export const getLeaderboard = async () => {
-  const res = await API.get("/leaderboard/leaderboard");
-
-  // 🔥 normalize response
-  if (Array.isArray(res.data)) return { data: res.data };
-  if (Array.isArray(res.data.leaderboard)) return { data: res.data.leaderboard };
-
-  return { data: [] };
-};
+export const getLeaderboard = () =>
+  API.get("/leaderboard/leaderboard");
 
 export default API;

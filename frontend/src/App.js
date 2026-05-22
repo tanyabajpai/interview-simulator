@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import {
   runCode,
   runTests,
@@ -31,20 +31,17 @@ function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  const token = localStorage.getItem("token");
+  // FIX: token in state so effects re-run when it changes
+  const [token, setToken] = useState(localStorage.getItem("token"));
 
   // =========================
   // LOAD QUESTION
   // =========================
-  const loadQuestion = async () => {
+  const loadQuestion = useCallback(async () => {
     try {
       const res = await getQuestions(difficulty);
-      let q = res.data;
-
-      if (Array.isArray(q)) {
-        q = q[Math.floor(Math.random() * q.length)];
-      }
-
+      // Backend returns a single question object (not array)
+      const q = res.data;
       setQuestion(q);
       setCode("def solution():\n    pass");
       setOutput("");
@@ -52,10 +49,10 @@ function App() {
       setScore(0);
       setFeedback("");
       setTimeLeft(300);
-    } catch {
-      console.log("Question error");
+    } catch (err) {
+      console.error("Question load error:", err);
     }
-  };
+  }, [difficulty]);
 
   // =========================
   // AUTH
@@ -63,14 +60,11 @@ function App() {
   const handleLogin = async () => {
     try {
       const res = await login({ username, password });
-
-      localStorage.setItem("token", res.data.access_token);
-
+      const accessToken = res.data.access_token;
+      localStorage.setItem("token", accessToken);
+      // FIX: update state so protected calls unblock immediately
+      setToken(accessToken);
       alert("Login successful");
-
-      fetchStats();
-      fetchLeaderboard();
-      fetchHistory();
     } catch {
       alert("Login failed");
     }
@@ -79,10 +73,17 @@ function App() {
   const handleSignup = async () => {
     try {
       await signup({ username, password });
-      alert("Signup success!");
+      alert("Signup success! Please log in.");
     } catch {
       alert("Signup failed");
     }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("token");
+    setToken(null);
+    setStats(null);
+    setHistory([]);
   };
 
   // =========================
@@ -99,57 +100,38 @@ function App() {
 
   const handleTest = async () => {
     if (!question) return;
-
     try {
       const res = await runTests(code, question.title);
       setTests(res.data.results || []);
       setScore(res.data.score || 0);
-    } catch {
-      console.log("Test error");
+    } catch (err) {
+      console.error("Test error:", err);
     }
   };
 
   const handleAI = async () => {
     if (!question) return;
-
     try {
       const res = await getAIFeedback(code, question.title);
-
-      let feedbackText = "";
-
-      if (typeof res.data === "string") {
-        feedbackText = res.data;
-      } else if (res.data.feedback) {
-        feedbackText = res.data.feedback;
-      } else if (res.data.message) {
-        feedbackText = res.data.message;
-      } else {
-        feedbackText = JSON.stringify(res.data);
-      }
-
+      const d = res.data;
+      let feedbackText =
+        typeof d === "string"
+          ? d
+          : d.feedback || d.message || JSON.stringify(d);
       setFeedback(feedbackText);
     } catch {
-      setFeedback("❌ AI failed");
+      setFeedback("AI feedback failed");
     }
   };
 
   const handleSubmit = async () => {
     if (!token) {
-      alert("Login first!");
+      alert("Please log in first!");
       return;
     }
-
     try {
-      await saveAttempt(
-        {
-          question: question.title,
-          score,
-        },
-        token
-      );
-
-      alert("Submitted");
-
+      await saveAttempt({ question: question.title, score });
+      alert("Submitted!");
       fetchStats();
       fetchLeaderboard();
       fetchHistory();
@@ -159,125 +141,182 @@ function App() {
   };
 
   // =========================
-  // DATA
+  // DATA FETCHING
+  // FIX: no token param — api.js reads localStorage internally
   // =========================
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     if (!token) return;
-
     try {
-      const res = await getStats(token);
+      const res = await getStats();
       setStats(res.data);
-    } catch {}
-  };
+    } catch (err) {
+      console.error("Stats error:", err);
+    }
+  }, [token]);
 
   const fetchLeaderboard = async () => {
     try {
       const res = await getLeaderboard();
-
+      // FIX: res.data is the array directly (no manual wrapping in api.js)
       let data = res.data;
       if (!Array.isArray(data)) {
-        if (Array.isArray(data.leaderboard)) data = data.leaderboard;
-        else data = [];
+        data = Array.isArray(data.leaderboard) ? data.leaderboard : [];
       }
-
       setLeaderboard(data);
     } catch {
       setLeaderboard([]);
     }
   };
 
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     if (!token) return;
-
     try {
-      const res = await getHistory(token);
+      const res = await getHistory();
       setHistory(res.data || []);
-    } catch {}
-  };
+    } catch (err) {
+      console.error("History error:", err);
+    }
+  }, [token]);
 
   // =========================
   // TIMER
   // =========================
   useEffect(() => {
     if (timeLeft <= 0) return;
-
-    const t = setTimeout(() => setTimeLeft(timeLeft - 1), 1000);
+    const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
     return () => clearTimeout(t);
   }, [timeLeft]);
 
+  // Load question + leaderboard whenever difficulty changes
   useEffect(() => {
     loadQuestion();
     fetchLeaderboard();
+  }, [loadQuestion]);
+
+  // FIX: re-fetch protected data whenever token changes (login/logout)
+  useEffect(() => {
     fetchStats();
     fetchHistory();
-  }, [difficulty]);
+  }, [fetchStats, fetchHistory]);
 
   // =========================
   // UI
   // =========================
   return (
-    <div style={{ display: "flex", padding: 20 }}>
+    <div style={{ display: "flex", padding: 20, fontFamily: "monospace" }}>
       {/* LEFT PANEL */}
-      <div style={{ width: "30%" }}>
-        <h3>Login</h3>
-        <input placeholder="username" onChange={(e) => setUsername(e.target.value)} />
-        <input type="password" placeholder="password" onChange={(e) => setPassword(e.target.value)} />
-        <button onClick={handleLogin}>Login</button>
-        <button onClick={handleSignup}>Signup</button>
+      <div style={{ width: "30%", paddingRight: 20 }}>
 
+        {/* AUTH */}
+        {!token ? (
+          <>
+            <h3>Login / Signup</h3>
+            <input
+              placeholder="username"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              style={{ display: "block", marginBottom: 4 }}
+            />
+            <input
+              type="password"
+              placeholder="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              style={{ display: "block", marginBottom: 4 }}
+            />
+            <button onClick={handleLogin}>Login</button>
+            <button onClick={handleSignup} style={{ marginLeft: 4 }}>Signup</button>
+          </>
+        ) : (
+          <>
+            <p>✅ Logged in</p>
+            <button onClick={handleLogout}>Logout</button>
+          </>
+        )}
+
+        {/* DIFFICULTY */}
         <h3>Difficulty</h3>
-        <select onChange={(e) => setDifficulty(e.target.value)}>
-          <option>easy</option>
-          <option>medium</option>
-          <option>hard</option>
+        <select
+          value={difficulty}
+          onChange={(e) => setDifficulty(e.target.value)}
+        >
+          <option value="easy">Easy</option>
+          <option value="medium">Medium</option>
+          <option value="hard">Hard</option>
         </select>
 
-        <h2>{question?.title}</h2>
-        <p>{question?.description}</p>
+        {/* QUESTION */}
+        {question ? (
+          <>
+            <h2>{question.title}</h2>
+            <p>{question.description}</p>
+          </>
+        ) : (
+          <p>Loading question...</p>
+        )}
 
         <h3>⏱ {timeLeft}s</h3>
 
+        {/* STATS */}
         <h3>Stats</h3>
         {stats ? (
           <>
             <p>Attempts: {stats.total_attempts}</p>
-            <p>Avg: {stats.avg_score}</p>
+            <p>Avg Score: {stats.avg_score}</p>
           </>
         ) : (
           <p>Login to see stats</p>
         )}
 
+        {/* OUTPUT */}
         <h3>Output</h3>
-        <pre>{output}</pre>
+        <pre style={{ background: "#111", color: "#0f0", padding: 8 }}>
+          {output || "(no output)"}
+        </pre>
 
+        {/* TESTS */}
         <h3>Tests</h3>
-        {tests.map((t, i) => (
-          <p key={i}>
-            {t.input || "Hidden"} → {t.passed ? "PASS" : "FAIL"}
-          </p>
-        ))}
+        {tests.length === 0 ? (
+          <p>No test results yet</p>
+        ) : (
+          tests.map((t, i) => (
+            <p key={i}>
+              {t.input ?? "Hidden"} → {t.passed ? "✅ PASS" : "❌ FAIL"}
+            </p>
+          ))
+        )}
 
-        <h3>Score</h3>
-        <p>{score}</p>
+        <h3>Score: {score}</h3>
 
+        {/* AI FEEDBACK */}
         <h3>AI Feedback</h3>
-        <div style={{ whiteSpace: "pre-wrap" }}>
-          {feedback || "Click AI"}
+        <div style={{ whiteSpace: "pre-wrap", background: "#f5f5f5", padding: 8 }}>
+          {feedback || "Click AI to get feedback"}
         </div>
 
+        {/* HISTORY */}
         <h3>History</h3>
-        {history.map((h, i) => (
-          <p key={i}>
-            {h.question} → {h.score}
-          </p>
-        ))}
+        {history.length === 0 ? (
+          <p>No history</p>
+        ) : (
+          history.map((h, i) => (
+            <p key={i}>
+              {h.question} → {h.score}
+            </p>
+          ))
+        )}
 
-        <h3>Leaderboard</h3>
-        {leaderboard.map((u, i) => (
-          <p key={i}>
-            {i + 1}. {u.username} - {u.score}
-          </p>
-        ))}
+        {/* LEADERBOARD */}
+        <h3>🏆 Leaderboard</h3>
+        {leaderboard.length === 0 ? (
+          <p>No entries yet</p>
+        ) : (
+          leaderboard.map((u, i) => (
+            <p key={i}>
+              {i + 1}. {u.username} — {u.score}
+            </p>
+          ))
+        )}
       </div>
 
       {/* RIGHT PANEL */}
@@ -288,17 +327,22 @@ function App() {
           style={{
             width: "100%",
             height: "400px",
-            background: "black",
-            color: "lime",
+            background: "#0d0d0d",
+            color: "#00ff41",
+            fontFamily: "monospace",
+            fontSize: 14,
+            padding: 12,
+            border: "1px solid #333",
+            boxSizing: "border-box",
           }}
         />
 
-        <div style={{ marginTop: 10 }}>
-          <button onClick={handleRun}>Run</button>
-          <button onClick={handleTest}>Test</button>
-          <button onClick={handleAI}>AI</button>
-          <button onClick={handleSubmit}>Submit</button>
-          <button onClick={loadQuestion}>Next</button>
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <button onClick={handleRun}>▶ Run</button>
+          <button onClick={handleTest}>🧪 Test</button>
+          <button onClick={handleAI}>🤖 AI</button>
+          <button onClick={handleSubmit}>✅ Submit</button>
+          <button onClick={loadQuestion}>⏭ Next</button>
         </div>
       </div>
     </div>
