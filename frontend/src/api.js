@@ -1,7 +1,8 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "https://your-backend.onrender.com",
+  baseURL: "https://interview-simulator-backend-6ne6.onrender.com",
+  
   headers: {
     "Content-Type": "application/json",
   },
