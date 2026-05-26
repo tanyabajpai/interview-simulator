@@ -493,7 +493,12 @@ function App() {
         )}
 
         <h3>Output</h3>
-        <pre style={{ background: "#111", color: "#0f0", padding: 8 }}>
+        <pre style={{
+          background: "#111", color: "#0f0", padding: 8,
+          whiteSpace: "pre-wrap", wordBreak: "break-all",
+          overflowX: "hidden", maxWidth: "100%",
+          fontSize: 13, borderRadius: 4, margin: 0,
+        }}>
           {output || "(no output)"}
         </pre>
 
