@@ -17,7 +17,7 @@ app = FastAPI(
 )
 
 # =========================
-# 🌐 CORS (Frontend ready)
+# CORS (Frontend ready)
 # =========================
 app.add_middleware(
     CORSMiddleware,
@@ -28,7 +28,7 @@ app.add_middleware(
 )
 
 # =========================
-# 🚀 ROUTES (CLEAN STRUCTURE)
+# ROUTES (CLEAN STRUCTURE)
 # =========================
 
 # CORE
@@ -48,14 +48,25 @@ app.include_router(attempt_router, prefix="/attempts", tags=["Attempts"])
 app.include_router(system_router, tags=["System"])
 
 # =========================
-# 🏠 HOME
+# HOME
 # =========================
 @app.get("/")
 def home():
     return {"message": "Interview Simulator Backend Running 🚀"}
 
 # =========================
-# 🔍 DEBUG ROUTES
+# HEALTH CHECK
+# Used by frontend wakeUpBackend() to detect cold starts.
+# Lightweight — no DB calls, instant response.
+# Also use this URL with UptimeRobot (14 min interval)
+# to prevent Render from sleeping at all.
+# =========================
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+# =========================
+# DEBUG ROUTES
 # =========================
 @app.get("/debug/routes")
 def list_routes():

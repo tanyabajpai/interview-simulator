@@ -10,6 +10,7 @@ import {
   login,
   signup,
   getHistory,
+  wakeUpBackend,
 } from "./api";
 
 function App() {
@@ -31,16 +32,22 @@ function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
 
-  // FIX: token in state so effects re-run when it changes
   const [token, setToken] = useState(localStorage.getItem("token"));
+
+  // =========================
+  // WAKE-UP STATE
+  // Tracks whether backend is cold-starting
+  // =========================
+  const [backendStatus, setBackendStatus] = useState("idle");
+  // "idle" | "waking" | "ready" | "failed"
 
   // =========================
   // LOAD QUESTION
   // =========================
   const loadQuestion = useCallback(async () => {
+    setQuestion(null); // show loading state while fetching
     try {
       const res = await getQuestions(difficulty);
-      // Backend returns a single question object (not array)
       const q = res.data;
       setQuestion(q);
       setCode("def solution():\n    pass");
@@ -51,6 +58,7 @@ function App() {
       setTimeLeft(300);
     } catch (err) {
       console.error("Question load error:", err);
+      setQuestion({ title: "Failed to load", description: "Could not reach the server. Try clicking Next or refreshing." });
     }
   }, [difficulty]);
 
@@ -62,7 +70,6 @@ function App() {
       const res = await login({ username, password });
       const accessToken = res.data.access_token;
       localStorage.setItem("token", accessToken);
-      // FIX: update state so protected calls unblock immediately
       setToken(accessToken);
       alert("Login successful");
     } catch {
@@ -114,10 +121,8 @@ function App() {
     try {
       const res = await getAIFeedback(code, question.title);
       const d = res.data;
-      let feedbackText =
-        typeof d === "string"
-          ? d
-          : d.feedback || d.message || JSON.stringify(d);
+      const feedbackText =
+        typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d);
       setFeedback(feedbackText);
     } catch {
       setFeedback("AI feedback failed");
@@ -142,7 +147,6 @@ function App() {
 
   // =========================
   // DATA FETCHING
-  // FIX: no token param — api.js reads localStorage internally
   // =========================
   const fetchStats = useCallback(async () => {
     if (!token) return;
@@ -157,7 +161,6 @@ function App() {
   const fetchLeaderboard = async () => {
     try {
       const res = await getLeaderboard();
-      // FIX: res.data is the array directly (no manual wrapping in api.js)
       let data = res.data;
       if (!Array.isArray(data)) {
         data = Array.isArray(data.leaderboard) ? data.leaderboard : [];
@@ -187,17 +190,86 @@ function App() {
     return () => clearTimeout(t);
   }, [timeLeft]);
 
-  // Load question + leaderboard whenever difficulty changes
+  // =========================
+  // BOOT SEQUENCE
+  // On first load: wake backend → then load question + leaderboard
+  // This replaces the old useEffect that called loadQuestion directly,
+  // which raced against a cold-starting backend and got nothing.
+  // =========================
   useEffect(() => {
+    const boot = async () => {
+      setBackendStatus("waking");
+      const isUp = await wakeUpBackend();
+      if (!isUp) {
+        setBackendStatus("failed");
+        setQuestion({
+          title: "Server unavailable",
+          description: "The backend could not be reached. Please try again in a minute.",
+        });
+        return;
+      }
+      setBackendStatus("ready");
+      await loadQuestion();
+      fetchLeaderboard();
+    };
+    boot();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // runs ONCE on mount
+
+  // Re-load question when difficulty changes (backend already awake by then)
+  useEffect(() => {
+    // Skip the very first render — boot() handles it
+    if (backendStatus !== "ready") return;
     loadQuestion();
     fetchLeaderboard();
-  }, [loadQuestion]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [difficulty]);
 
-  // FIX: re-fetch protected data whenever token changes (login/logout)
+  // Re-fetch protected data on login/logout
   useEffect(() => {
     fetchStats();
     fetchHistory();
   }, [fetchStats, fetchHistory]);
+
+  // =========================
+  // WAKE-UP BANNER
+  // =========================
+  const WakingBanner = () => {
+    if (backendStatus === "waking") {
+      return (
+        <div style={{
+          background: "#fff3cd",
+          border: "1px solid #ffc107",
+          borderRadius: 6,
+          padding: "10px 14px",
+          marginBottom: 12,
+          fontSize: 13,
+        }}>
+          ⏳ <strong>Server is waking up</strong> — this takes ~30 seconds on first load.
+          <br />
+          <span style={{ color: "#666" }}>Render free tier sleeps after inactivity.</span>
+        </div>
+      );
+    }
+    if (backendStatus === "failed") {
+      return (
+        <div style={{
+          background: "#f8d7da",
+          border: "1px solid #f5c6cb",
+          borderRadius: 6,
+          padding: "10px 14px",
+          marginBottom: 12,
+          fontSize: 13,
+        }}>
+          ❌ <strong>Could not reach server.</strong>{" "}
+          <button onClick={() => window.location.reload()} style={{ marginLeft: 8 }}>
+            Retry
+          </button>
+        </div>
+      );
+    }
+    return null;
+  };
 
   // =========================
   // UI
@@ -206,6 +278,8 @@ function App() {
     <div style={{ display: "flex", padding: 20, fontFamily: "monospace" }}>
       {/* LEFT PANEL */}
       <div style={{ width: "30%", paddingRight: 20 }}>
+
+        <WakingBanner />
 
         {/* AUTH */}
         {!token ? (
@@ -239,6 +313,7 @@ function App() {
         <select
           value={difficulty}
           onChange={(e) => setDifficulty(e.target.value)}
+          disabled={backendStatus === "waking"}
         >
           <option value="easy">Easy</option>
           <option value="medium">Medium</option>
@@ -246,7 +321,9 @@ function App() {
         </select>
 
         {/* QUESTION */}
-        {question ? (
+        {backendStatus === "waking" ? (
+          <p style={{ color: "#888", fontStyle: "italic" }}>⏳ Waiting for server...</p>
+        ) : question ? (
           <>
             <h2>{question.title}</h2>
             <p>{question.description}</p>
@@ -338,11 +415,11 @@ function App() {
         />
 
         <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <button onClick={handleRun}>▶ Run</button>
-          <button onClick={handleTest}>🧪 Test</button>
-          <button onClick={handleAI}>🤖 AI</button>
-          <button onClick={handleSubmit}>✅ Submit</button>
-          <button onClick={loadQuestion}>⏭ Next</button>
+          <button onClick={handleRun} disabled={backendStatus === "waking"}>▶ Run</button>
+          <button onClick={handleTest} disabled={backendStatus === "waking"}>🧪 Test</button>
+          <button onClick={handleAI} disabled={backendStatus === "waking"}>🤖 AI</button>
+          <button onClick={handleSubmit} disabled={backendStatus === "waking"}>✅ Submit</button>
+          <button onClick={loadQuestion} disabled={backendStatus === "waking"}>⏭ Next</button>
         </div>
       </div>
     </div>
