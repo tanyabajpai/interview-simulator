@@ -343,19 +343,24 @@ function App() {
   // ACTIONS
   // =========================
   const handleRun = async () => {
-    setOutputLoading(true); setActiveTab("output");
+    setOutputLoading(true);
+    setActiveTab("output");
+    // On mobile: switch to info panel so user sees the result
     if (isMobile) setMobilePanel("left");
     try {
       const res = await runCode(code);
       setOutput(res.data.output || "(no output)");
-    } catch {
-      setOutput("Error running code.");
+    } catch (err) {
+      const msg = err?.response?.data?.detail || err?.response?.data?.error || "Error running code.";
+      setOutput(msg);
     } finally { setOutputLoading(false); }
   };
 
   const handleTest = async () => {
     if (!question) return;
-    setTestsLoading(true); setActiveTab("tests");
+    setTestsLoading(true);
+    setActiveTab("tests");
+    // On mobile: switch to info panel so user sees test results
     if (isMobile) setMobilePanel("left");
     try {
       const res = await runTests(code, question.title);
@@ -363,31 +368,51 @@ function App() {
       setScore(res.data.score ?? 0);
     } catch (err) {
       console.error("Test error:", err);
+      const msg = err?.response?.data?.detail || "Tests failed to run.";
+      setTests([{ passed: false, input: "Error", expected: "", got: msg }]);
+      setScore(0);
     } finally { setTestsLoading(false); }
   };
 
   const handleAI = async () => {
     if (!question) return;
-    setFeedbackLoading(true); setActiveTab("feedback");
+    setFeedbackLoading(true);
+    setActiveTab("feedback");
+    // On mobile: switch to info panel so user sees AI feedback
     if (isMobile) setMobilePanel("left");
     try {
       const res = await getAIFeedback(code, question.title);
       const d = res.data;
       setFeedback(typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d));
     } catch {
-      setFeedback("AI feedback failed.");
+      setFeedback("AI feedback failed. Please try again.");
     } finally { setFeedbackLoading(false); }
   };
 
   const handleSubmit = async () => {
     if (!token) { alert("Please log in to submit!"); return; }
+    if (!question) { alert("No question loaded."); return; }
     try {
-      await saveAttempt({ question: question.title, score: score ?? 0 });
+      // Run tests first if score is not yet available
+      let finalScore = score;
+      if (finalScore === null) {
+        try {
+          const res = await runTests(code, question.title);
+          setTests(res.data.results || []);
+          finalScore = res.data.score ?? 0;
+          setScore(finalScore);
+          setActiveTab("tests");
+        } catch {
+          finalScore = 0;
+        }
+      }
+      await saveAttempt({ question: question.title, score: finalScore });
       setSubmitSuccess(true);
       setTimeout(() => setSubmitSuccess(false), 3000);
       fetchStats(); fetchLeaderboard(); fetchHistory();
-    } catch {
-      alert("Submit failed");
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Submit failed. Please try again.";
+      alert(msg);
     }
   };
 
@@ -744,14 +769,14 @@ function App() {
         {/* Mobile panel toggle — only shown on mobile */}
         {isMobile && (
           <div style={{ display: "flex", gap: 4 }}>
-            {["left", "right"].map(p => (
-              <button key={p} onClick={() => setMobilePanel(p)} style={{
-                padding: "4px 12px", fontSize: 11, borderRadius: 4,
-                background: mobilePanel === p ? "rgba(0,255,65,0.15)" : "transparent",
-                color: mobilePanel === p ? S.accent : S.muted,
-                border: `1px solid ${mobilePanel === p ? "rgba(0,255,65,0.3)" : "#1a1a2e"}`,
-                cursor: "pointer",
-              }}>{p === "left" ? "📋 Info" : "💻 Code"}</button>
+            {[{ id: "left", label: "📋 Info" }, { id: "right", label: "💻 Code" }].map(p => (
+              <button key={p.id} onClick={() => setMobilePanel(p.id)} style={{
+                padding: "5px 13px", fontSize: 12, borderRadius: 5,
+                background: mobilePanel === p.id ? "rgba(0,255,65,0.18)" : "transparent",
+                color: mobilePanel === p.id ? S.accent : S.muted,
+                border: `1px solid ${mobilePanel === p.id ? "rgba(0,255,65,0.4)" : "#1a1a2e"}`,
+                cursor: "pointer", fontFamily: S.font, fontWeight: mobilePanel === p.id ? 700 : 400,
+              }}>{p.label}</button>
             ))}
           </div>
         )}
@@ -815,6 +840,7 @@ function App() {
           minWidth: isMobile ? "unset" : 260,
           borderRight: isMobile ? "none" : "1px solid #12121f",
           overflowY: "auto", padding: "14px 16px", flexShrink: 0,
+          paddingBottom: isMobile ? "70px" : "14px",
           display: isMobile && mobilePanel !== "left" ? "none" : "block",
         }}>
           {/* Difficulty */}
@@ -1019,7 +1045,9 @@ function App() {
         {/* RIGHT PANEL — Editor */}
         <div style={{
           flex: 1, display: isMobile && mobilePanel !== "right" ? "none" : "flex",
-          flexDirection: "column", padding: "14px", overflow: "hidden",
+          flexDirection: "column", padding: "14px",
+          paddingBottom: isMobile ? "70px" : "14px",
+          overflow: "hidden",
         }}>
           {/* Editor */}
           <div style={{ flex: 1, minHeight: 0, marginBottom: 12 }}>
@@ -1031,7 +1059,8 @@ function App() {
             />
           </div>
 
-          {/* Action Buttons */}
+          {/* Action Buttons — Desktop only (mobile uses fixed bottom bar) */}
+          {!isMobile && (
           <div style={{
             display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0,
           }}>
@@ -1054,8 +1083,57 @@ function App() {
               >{label}</button>
             ))}
           </div>
+          )}
         </div>
       </div>
+
+      {/* MOBILE FIXED BOTTOM ACTION BAR */}
+      {isMobile && (
+        <div style={{
+          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100,
+          background: "#07070f", borderTop: "1px solid #1a1a2e",
+          display: "flex", gap: 0, flexShrink: 0,
+          paddingBottom: "env(safe-area-inset-bottom)",
+        }}>
+          {[
+            { label: "▶ Run", fn: handleRun, disabled: actionsDisabled },
+            { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled },
+            { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled },
+            {
+              label: "✅ Submit", fn: handleSubmit,
+              disabled: actionsDisabled || !token,
+              highlight: true,
+            },
+            {
+              label: "⏭ Next", fn: loadQuestion,
+              disabled: backendStatus === "waking",
+              pulse: timedOut,
+            },
+          ].map(({ label, fn, disabled, highlight, pulse }) => (
+            <button
+              key={label}
+              onClick={fn}
+              disabled={disabled}
+              style={{
+                flex: 1, padding: "11px 4px", fontSize: 11,
+                background: pulse
+                  ? S.accent
+                  : highlight
+                  ? "rgba(0,255,65,0.1)"
+                  : "transparent",
+                color: pulse ? "#000" : highlight ? S.accent : disabled ? S.muted : S.text,
+                border: "none",
+                borderRight: "1px solid #1a1a2e",
+                cursor: disabled ? "not-allowed" : "pointer",
+                fontFamily: S.font,
+                fontWeight: pulse ? 700 : 400,
+                opacity: disabled ? 0.4 : 1,
+                transition: "all 0.15s",
+              }}
+            >{label}</button>
+          ))}
+        </div>
+      )}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap');
