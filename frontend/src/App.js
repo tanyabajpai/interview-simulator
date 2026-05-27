@@ -193,9 +193,8 @@ function App() {
   );
 
   const [backendStatus, setBackendStatus] = useState("idle");
-  const [activeTab, setActiveTab] = useState("output");
-  const [mobilePanel, setMobilePanel] = useState("left");
-  const [mobileResult, setMobileResult] = useState(null);
+  const [activeTab, setActiveTab] = useState("output"); // "output" | "tests" | "feedback"
+  const [mobilePanel, setMobilePanel] = useState("left"); // "left" | "right"
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
 
@@ -217,11 +216,76 @@ function App() {
     setScore(null);
     setFeedback("");
     setSubmitSuccess(false);
-    setMobileResult(null);
     try {
       const res = await getQuestions(difficulty);
-      setQuestion(res.data);
-      setCode("def solution():\n    pass");
+      const q = res.data;
+      setQuestion(q);
+      const starterMap = {
+        "Reverse String": "def solution(s):\n    pass",
+        "Palindrome Check": "def solution(s):\n    pass",
+        "Factorial": "def solution(n):\n    pass",
+        "Fibonacci Number": "def solution(n):\n    pass",
+        "Count Vowels": "def solution(s):\n    pass",
+        "Sum of List": "def solution(nums):\n    pass",
+        "Check Prime": "def solution(n):\n    pass",
+        "Max in List": "def solution(nums):\n    pass",
+        "Min in List": "def solution(nums):\n    pass",
+        "Even or Odd": "def solution(n):\n    pass",
+        "Remove Spaces": "def solution(s):\n    pass",
+        "Remove Duplicates": "def solution(nums):\n    pass",
+        "Count Words": "def solution(s):\n    pass",
+        "Square Number": "def solution(n):\n    pass",
+        "Cube Number": "def solution(n):\n    pass",
+        "Find Length": "def solution(s):\n    pass",
+        "Uppercase String": "def solution(s):\n    pass",
+        "Lowercase String": "def solution(s):\n    pass",
+        "Average of List": "def solution(nums):\n    pass",
+        "Find Index": "def solution(nums, target):\n    pass",
+        "FizzBuzz": "def solution(n):\n    pass",
+        "Sum of Digits": "def solution(n):\n    pass",
+        "Flatten List": "def solution(lst):\n    pass",
+        "Count Occurrences": "def solution(lst, val):\n    pass",
+        "Power Function": "def solution(base, exp):\n    pass",
+        "Merge Two Sorted Lists": "def solution(l1, l2):\n    pass",
+        "Missing Number": "def solution(nums):\n    pass",
+        "Is Anagram": "def solution(s, t):\n    pass",
+        "Two Sum": "def solution(nums, target):\n    pass",
+        "Valid Parentheses": "def solution(s):\n    pass",
+        "Longest Substring Without Repeating": "def solution(s):\n    pass",
+        "Second Largest": "def solution(nums):\n    pass",
+        "Rotate Array": "def solution(nums, k):\n    pass",
+        "Product Except Self": "def solution(nums):\n    pass",
+        "Group Anagrams": "def solution(strs):\n    pass",
+        "Top K Frequent Elements": "def solution(nums, k):\n    pass",
+        "Kth Largest Element": "def solution(nums, k):\n    pass",
+        "Container With Most Water": "def solution(height):\n    pass",
+        "Longest Palindromic Substring": "def solution(s):\n    pass",
+        "Subarray Sum Equals K": "def solution(nums, k):\n    pass",
+        "Sort Colors": "def solution(nums):\n    pass",
+        "Spiral Matrix": "def solution(matrix):\n    pass",
+        "Combination Sum": "def solution(candidates, target):\n    pass",
+        "Permutations": "def solution(nums):\n    pass",
+        "Search in Rotated Sorted Array": "def solution(nums, target):\n    pass",
+        "Word Search": "def solution(board, word):\n    pass",
+        "Set Matrix Zeroes": "def solution(matrix):\n    pass",
+        "Jump Game": "def solution(nums):\n    pass",
+        "Anagram Check": "def solution(s, t):\n    pass",
+        "Trapping Rain Water": "def solution(height):\n    pass",
+        "Median of Two Sorted Arrays": "def solution(nums1, nums2):\n    pass",
+        "Merge Intervals": "def solution(intervals):\n    pass",
+        "Minimum Window Substring": "def solution(s, t):\n    pass",
+        "N Queens": "def solution(n):\n    pass",
+        "Edit Distance": "def solution(word1, word2):\n    pass",
+        "Word Break": "def solution(s, wordDict):\n    pass",
+        "Course Schedule": "def solution(numCourses, prerequisites):\n    pass",
+        "Sliding Window Maximum": "def solution(nums, k):\n    pass",
+        "Regular Expression Matching": "def solution(s, p):\n    pass",
+        "Palindrome Partitioning": "def solution(s):\n    pass",
+        "Burst Balloons": "def solution(nums):\n    pass",
+        "Distinct Subsequences": "def solution(s, t):\n    pass",
+        "Word Ladder": "def solution(beginWord, endWord, wordList):\n    pass",
+      };
+      setCode(starterMap[q.title] || "def solution(*args):\n    pass");
     } catch {
       setQuestion({
         title: "Failed to load",
@@ -280,77 +344,50 @@ function App() {
   // =========================
   const handleRun = async () => {
     setOutputLoading(true); setActiveTab("output");
-    setMobileResult({ type: "output", content: "Running..." });
+    if (isMobile) setMobilePanel("left");
     try {
       const res = await runCode(code);
-      const out = res.data.output || "(no output)";
-      setOutput(out);
-      setMobileResult({ type: "output", content: out });
+      setOutput(res.data.output || "(no output)");
     } catch {
       setOutput("Error running code.");
-      setMobileResult({ type: "output", content: "Error running code." });
     } finally { setOutputLoading(false); }
   };
 
   const handleTest = async () => {
     if (!question) return;
     setTestsLoading(true); setActiveTab("tests");
-    setMobileResult({ type: "tests", content: "running" });
+    if (isMobile) setMobilePanel("left");
     try {
       const res = await runTests(code, question.title);
-      const results = res.data.results || [];
-      const sc = res.data.score ?? 0;
-      setTests(results);
-      setScore(sc);
-      setMobileResult({ type: "tests", content: { results, score: sc } });
+      setTests(res.data.results || []);
+      setScore(res.data.score ?? 0);
     } catch (err) {
       console.error("Test error:", err);
-      setMobileResult({ type: "tests", content: { results: [], score: 0 } });
     } finally { setTestsLoading(false); }
   };
 
   const handleAI = async () => {
     if (!question) return;
     setFeedbackLoading(true); setActiveTab("feedback");
-    setMobileResult({ type: "feedback", content: "🤖 Analyzing your code..." });
+    if (isMobile) setMobilePanel("left");
     try {
       const res = await getAIFeedback(code, question.title);
       const d = res.data;
-      const fb = typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d);
-      setFeedback(fb);
-      setMobileResult({ type: "feedback", content: fb });
+      setFeedback(typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d));
     } catch {
       setFeedback("AI feedback failed.");
-      setMobileResult({ type: "feedback", content: "AI feedback failed." });
     } finally { setFeedbackLoading(false); }
   };
 
   const handleSubmit = async () => {
-    if (!token) {
-      setMobileResult({ type: "output", content: "⚠ Please log in to submit." });
-      return;
-    }
-    if (!question) return;
-    // auto-run tests first if score not yet available
-    let finalScore = score;
-    if (finalScore === null) {
-      try {
-        const res = await runTests(code, question.title);
-        const results = res.data.results || [];
-        finalScore = res.data.score ?? 0;
-        setTests(results);
-        setScore(finalScore);
-      } catch { finalScore = 0; }
-    }
+    if (!token) { alert("Please log in to submit!"); return; }
     try {
-      await saveAttempt({ question: question.title, score: finalScore });
+      await saveAttempt({ question: question.title, score: score ?? 0 });
       setSubmitSuccess(true);
-      setMobileResult({ type: "output", content: `✅ Submitted! Score: ${finalScore}/100` });
       setTimeout(() => setSubmitSuccess(false), 3000);
       fetchStats(); fetchLeaderboard(); fetchHistory();
-    } catch (err) {
-      const msg = err?.response?.data?.detail || "Submit failed. Try again.";
-      setMobileResult({ type: "output", content: `❌ ${msg}` });
+    } catch {
+      alert("Submit failed");
     }
   };
 
@@ -981,15 +1018,11 @@ function App() {
 
         {/* RIGHT PANEL — Editor */}
         <div style={{
-          flex: 1,
-          display: isMobile && mobilePanel !== "right" ? "none" : "flex",
+          flex: 1, display: isMobile && mobilePanel !== "right" ? "none" : "flex",
           flexDirection: "column", padding: "14px", overflow: "hidden",
         }}>
-          {/* Editor — takes remaining space, shrinks when drawer is open */}
-          <div style={{
-            flex: mobileResult && isMobile ? "0 0 45%" : 1,
-            minHeight: 0, marginBottom: 10, transition: "flex 0.2s",
-          }}>
+          {/* Editor */}
+          <div style={{ flex: 1, minHeight: 0, marginBottom: 12 }}>
             <CodeEditor
               value={code}
               onChange={setCode}
@@ -999,109 +1032,28 @@ function App() {
           </div>
 
           {/* Action Buttons */}
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0, marginBottom: 8 }}>
+          <div style={{
+            display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0,
+          }}>
             {[
-              { label: "▶ Run", fn: handleRun, disabled: actionsDisabled, col: null },
-              { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, col: null },
-              { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, col: null },
-              { label: "✅ Submit", fn: handleSubmit, disabled: actionsDisabled, col: "green" },
-              { label: "⏭ Next", fn: loadQuestion, disabled: backendStatus === "waking", col: timedOut ? "accent" : null },
-            ].map(({ label, fn, disabled, col }) => (
+              { label: "▶ Run", fn: handleRun, disabled: actionsDisabled, style: {} },
+              { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, style: {} },
+              { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, style: {} },
+              { label: "✅ Submit", fn: handleSubmit, disabled: actionsDisabled || !token, style: { background: "rgba(0,255,65,0.15)", border: "1px solid rgba(0,255,65,0.4)", color: S.accent } },
+              { label: "⏭ Next", fn: loadQuestion, disabled: backendStatus === "waking", style: timedOut ? { background: S.accent, color: "#000", fontWeight: 700, border: "none" } : {} },
+            ].map(({ label, fn, disabled, style }) => (
               <button key={label} onClick={fn} disabled={disabled} style={{
-                padding: "9px 14px", fontSize: 12, borderRadius: 6,
-                background: col === "accent" ? S.accent
-                  : col === "green" ? "rgba(0,255,65,0.12)"
-                  : "#0c0c1a",
-                color: col === "accent" ? "#000"
-                  : col === "green" ? S.accent
-                  : disabled ? S.muted : S.text,
-                border: col === "green" ? "1px solid rgba(0,255,65,0.4)"
-                  : col === "accent" ? "none"
-                  : "1px solid #1e1e35",
-                fontWeight: col === "accent" ? 700 : 400,
-                cursor: disabled ? "not-allowed" : "pointer",
-                fontFamily: S.font, transition: "all 0.15s",
-                opacity: disabled ? 0.45 : 1,
+                padding: "9px 16px", fontSize: 12, borderRadius: 6,
+                background: "#0c0c1a", color: disabled ? S.muted : S.text,
+                border: "1px solid #1e1e35", cursor: disabled ? "not-allowed" : "pointer",
+                fontFamily: S.font, transition: "all 0.15s", opacity: disabled ? 0.5 : 1,
+                ...style,
               }}
-                onMouseEnter={e => { if (!disabled) e.currentTarget.style.opacity = "0.8"; }}
-                onMouseLeave={e => { if (!disabled) e.currentTarget.style.opacity = "1"; }}
+                onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = "rgba(0,255,65,0.3)"; }}
+                onMouseLeave={e => { if (!disabled) e.currentTarget.style.borderColor = "#1e1e35"; }}
               >{label}</button>
             ))}
           </div>
-
-          {/* ── MOBILE INLINE RESULTS DRAWER ── */}
-          {isMobile && mobileResult && (
-            <div style={{
-              flex: 1, minHeight: 0, overflow: "auto",
-              background: "#07070f", border: "1px solid #1a1a2e",
-              borderRadius: 8, padding: "10px 12px",
-            }}>
-              {/* Header row */}
-              <div style={{
-                display: "flex", justifyContent: "space-between", alignItems: "center",
-                marginBottom: 8,
-              }}>
-                <span style={{ fontSize: 11, color: S.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>
-                  {mobileResult.type === "output" ? "Output"
-                    : mobileResult.type === "tests" ? "Test Results"
-                    : "AI Feedback"}
-                </span>
-                <button onClick={() => setMobileResult(null)} style={{
-                  background: "transparent", border: "none", color: S.muted,
-                  fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 4px",
-                }}>×</button>
-              </div>
-
-              {/* Output */}
-              {mobileResult.type === "output" && (
-                <pre style={{
-                  color: "#00ff41", fontSize: 12, margin: 0,
-                  whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.6,
-                }}>{mobileResult.content}</pre>
-              )}
-
-              {/* Tests */}
-              {mobileResult.type === "tests" && (
-                mobileResult.content === "running" ? (
-                  <p style={{ color: S.muted, fontSize: 12 }}>Running tests...</p>
-                ) : (
-                  <>
-                    {mobileResult.content.results.length === 0 ? (
-                      <p style={{ color: S.muted, fontSize: 12 }}>No results.</p>
-                    ) : mobileResult.content.results.map((t, i) => (
-                      <div key={i} style={{
-                        display: "flex", justifyContent: "space-between",
-                        padding: "5px 8px", marginBottom: 4,
-                        background: t.passed ? "rgba(0,255,65,0.05)" : "rgba(220,53,69,0.08)",
-                        border: `1px solid ${t.passed ? "rgba(0,255,65,0.2)" : "rgba(220,53,69,0.25)"}`,
-                        borderRadius: 5, fontSize: 12,
-                      }}>
-                        <span style={{ color: S.muted }}>{t.input != null ? `input: ${String(t.input)}` : "Hidden"}</span>
-                        <span style={{ color: t.passed ? S.accent : "#ff4d6d", fontWeight: 700 }}>
-                          {t.passed ? "✓ PASS" : "✗ FAIL"}
-                        </span>
-                      </div>
-                    ))}
-                    <div style={{
-                      marginTop: 8, padding: "6px 10px",
-                      background: "rgba(0,255,65,0.08)", border: "1px solid rgba(0,255,65,0.2)",
-                      borderRadius: 5, color: S.accent, fontWeight: 700, fontSize: 13, textAlign: "center",
-                    }}>
-                      Score: {mobileResult.content.score} / 100
-                    </div>
-                  </>
-                )
-              )}
-
-              {/* AI Feedback */}
-              {mobileResult.type === "feedback" && (
-                <div style={{
-                  color: S.text, fontSize: 12, lineHeight: 1.7,
-                  whiteSpace: "pre-wrap",
-                }}>{mobileResult.content}</div>
-              )}
-            </div>
-          )}
         </div>
       </div>
 
