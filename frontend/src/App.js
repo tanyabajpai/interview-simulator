@@ -193,9 +193,17 @@ function App() {
   );
 
   const [backendStatus, setBackendStatus] = useState("idle");
-  const [activeTab, setActiveTab] = useState("output"); // "output" | "tests" | "feedback"
-  const [mobilePanel, setMobilePanel] = useState("left"); // "left" | "right"
+  const [activeTab, setActiveTab] = useState("output");
+  const [mobilePanel, setMobilePanel] = useState("left");
+  const [mobileResult, setMobileResult] = useState(null);
   const [submitSuccess, setSubmitSuccess] = useState(false);
+  const [isMobile, setIsMobile] = useState(window.innerWidth < 768);
+
+  useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   // =========================
   // LOAD QUESTION
@@ -209,6 +217,7 @@ function App() {
     setScore(null);
     setFeedback("");
     setSubmitSuccess(false);
+    setMobileResult(null);
     try {
       const res = await getQuestions(difficulty);
       setQuestion(res.data);
@@ -271,47 +280,77 @@ function App() {
   // =========================
   const handleRun = async () => {
     setOutputLoading(true); setActiveTab("output");
+    setMobileResult({ type: "output", content: "Running..." });
     try {
       const res = await runCode(code);
-      setOutput(res.data.output || "(no output)");
+      const out = res.data.output || "(no output)";
+      setOutput(out);
+      setMobileResult({ type: "output", content: out });
     } catch {
       setOutput("Error running code.");
+      setMobileResult({ type: "output", content: "Error running code." });
     } finally { setOutputLoading(false); }
   };
 
   const handleTest = async () => {
     if (!question) return;
     setTestsLoading(true); setActiveTab("tests");
+    setMobileResult({ type: "tests", content: "running" });
     try {
       const res = await runTests(code, question.title);
-      setTests(res.data.results || []);
-      setScore(res.data.score ?? 0);
+      const results = res.data.results || [];
+      const sc = res.data.score ?? 0;
+      setTests(results);
+      setScore(sc);
+      setMobileResult({ type: "tests", content: { results, score: sc } });
     } catch (err) {
       console.error("Test error:", err);
+      setMobileResult({ type: "tests", content: { results: [], score: 0 } });
     } finally { setTestsLoading(false); }
   };
 
   const handleAI = async () => {
     if (!question) return;
     setFeedbackLoading(true); setActiveTab("feedback");
+    setMobileResult({ type: "feedback", content: "🤖 Analyzing your code..." });
     try {
       const res = await getAIFeedback(code, question.title);
       const d = res.data;
-      setFeedback(typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d));
+      const fb = typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d);
+      setFeedback(fb);
+      setMobileResult({ type: "feedback", content: fb });
     } catch {
       setFeedback("AI feedback failed.");
+      setMobileResult({ type: "feedback", content: "AI feedback failed." });
     } finally { setFeedbackLoading(false); }
   };
 
   const handleSubmit = async () => {
-    if (!token) { alert("Please log in to submit!"); return; }
+    if (!token) {
+      setMobileResult({ type: "output", content: "⚠ Please log in to submit." });
+      return;
+    }
+    if (!question) return;
+    // auto-run tests first if score not yet available
+    let finalScore = score;
+    if (finalScore === null) {
+      try {
+        const res = await runTests(code, question.title);
+        const results = res.data.results || [];
+        finalScore = res.data.score ?? 0;
+        setTests(results);
+        setScore(finalScore);
+      } catch { finalScore = 0; }
+    }
     try {
-      await saveAttempt({ question: question.title, score: score ?? 0 });
+      await saveAttempt({ question: question.title, score: finalScore });
       setSubmitSuccess(true);
+      setMobileResult({ type: "output", content: `✅ Submitted! Score: ${finalScore}/100` });
       setTimeout(() => setSubmitSuccess(false), 3000);
       fetchStats(); fetchLeaderboard(); fetchHistory();
-    } catch {
-      alert("Submit failed");
+    } catch (err) {
+      const msg = err?.response?.data?.detail || "Submit failed. Try again.";
+      setMobileResult({ type: "output", content: `❌ ${msg}` });
     }
   };
 
@@ -665,18 +704,20 @@ function App() {
           {"<"} InterviewSim {"/>"}
         </span>
 
-        {/* Mobile panel toggle */}
-        <div style={{ display: "flex", gap: 4 }} className="mobile-toggle">
-          {["left", "right"].map(p => (
-            <button key={p} onClick={() => setMobilePanel(p)} style={{
-              padding: "4px 12px", fontSize: 11, borderRadius: 4,
-              background: mobilePanel === p ? "rgba(0,255,65,0.15)" : "transparent",
-              color: mobilePanel === p ? S.accent : S.muted,
-              border: `1px solid ${mobilePanel === p ? "rgba(0,255,65,0.3)" : "#1a1a2e"}`,
-              cursor: "pointer",
-            }}>{p === "left" ? "📋 Info" : "💻 Code"}</button>
-          ))}
-        </div>
+        {/* Mobile panel toggle — only shown on mobile */}
+        {isMobile && (
+          <div style={{ display: "flex", gap: 4 }}>
+            {["left", "right"].map(p => (
+              <button key={p} onClick={() => setMobilePanel(p)} style={{
+                padding: "4px 12px", fontSize: 11, borderRadius: 4,
+                background: mobilePanel === p ? "rgba(0,255,65,0.15)" : "transparent",
+                color: mobilePanel === p ? S.accent : S.muted,
+                border: `1px solid ${mobilePanel === p ? "rgba(0,255,65,0.3)" : "#1a1a2e"}`,
+                cursor: "pointer",
+              }}>{p === "left" ? "📋 Info" : "💻 Code"}</button>
+            ))}
+          </div>
+        )}
 
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           {token ? (
@@ -733,9 +774,11 @@ function App() {
 
         {/* LEFT PANEL */}
         <div style={{
-          width: "30%", minWidth: 240, borderRight: "1px solid #12121f",
+          width: isMobile ? "100%" : "32%",
+          minWidth: isMobile ? "unset" : 260,
+          borderRight: isMobile ? "none" : "1px solid #12121f",
           overflowY: "auto", padding: "14px 16px", flexShrink: 0,
-          display: typeof window !== "undefined" && window.innerWidth < 768 && mobilePanel !== "left" ? "none" : "block",
+          display: isMobile && mobilePanel !== "left" ? "none" : "block",
         }}>
           {/* Difficulty */}
           <div style={{ marginBottom: 14 }}>
@@ -938,12 +981,15 @@ function App() {
 
         {/* RIGHT PANEL — Editor */}
         <div style={{
-          flex: 1, display: "flex", flexDirection: "column",
-          padding: "14px", overflow: "hidden",
-          display: typeof window !== "undefined" && window.innerWidth < 768 && mobilePanel !== "right" ? "none" : "flex",
+          flex: 1,
+          display: isMobile && mobilePanel !== "right" ? "none" : "flex",
+          flexDirection: "column", padding: "14px", overflow: "hidden",
         }}>
-          {/* Editor */}
-          <div style={{ flex: 1, minHeight: 0, marginBottom: 12 }}>
+          {/* Editor — takes remaining space, shrinks when drawer is open */}
+          <div style={{
+            flex: mobileResult && isMobile ? "0 0 45%" : 1,
+            minHeight: 0, marginBottom: 10, transition: "flex 0.2s",
+          }}>
             <CodeEditor
               value={code}
               onChange={setCode}
@@ -953,28 +999,109 @@ function App() {
           </div>
 
           {/* Action Buttons */}
-          <div style={{
-            display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0,
-          }}>
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0, marginBottom: 8 }}>
             {[
-              { label: "▶ Run", fn: handleRun, disabled: actionsDisabled, style: {} },
-              { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, style: {} },
-              { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, style: {} },
-              { label: "✅ Submit", fn: handleSubmit, disabled: actionsDisabled || !token, style: { background: "rgba(0,255,65,0.15)", border: "1px solid rgba(0,255,65,0.4)", color: S.accent } },
-              { label: "⏭ Next", fn: loadQuestion, disabled: backendStatus === "waking", style: timedOut ? { background: S.accent, color: "#000", fontWeight: 700, border: "none" } : {} },
-            ].map(({ label, fn, disabled, style }) => (
+              { label: "▶ Run", fn: handleRun, disabled: actionsDisabled, col: null },
+              { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, col: null },
+              { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, col: null },
+              { label: "✅ Submit", fn: handleSubmit, disabled: actionsDisabled, col: "green" },
+              { label: "⏭ Next", fn: loadQuestion, disabled: backendStatus === "waking", col: timedOut ? "accent" : null },
+            ].map(({ label, fn, disabled, col }) => (
               <button key={label} onClick={fn} disabled={disabled} style={{
-                padding: "9px 16px", fontSize: 12, borderRadius: 6,
-                background: "#0c0c1a", color: disabled ? S.muted : S.text,
-                border: "1px solid #1e1e35", cursor: disabled ? "not-allowed" : "pointer",
-                fontFamily: S.font, transition: "all 0.15s", opacity: disabled ? 0.5 : 1,
-                ...style,
+                padding: "9px 14px", fontSize: 12, borderRadius: 6,
+                background: col === "accent" ? S.accent
+                  : col === "green" ? "rgba(0,255,65,0.12)"
+                  : "#0c0c1a",
+                color: col === "accent" ? "#000"
+                  : col === "green" ? S.accent
+                  : disabled ? S.muted : S.text,
+                border: col === "green" ? "1px solid rgba(0,255,65,0.4)"
+                  : col === "accent" ? "none"
+                  : "1px solid #1e1e35",
+                fontWeight: col === "accent" ? 700 : 400,
+                cursor: disabled ? "not-allowed" : "pointer",
+                fontFamily: S.font, transition: "all 0.15s",
+                opacity: disabled ? 0.45 : 1,
               }}
-                onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = "rgba(0,255,65,0.3)"; }}
-                onMouseLeave={e => { if (!disabled) e.currentTarget.style.borderColor = "#1e1e35"; }}
+                onMouseEnter={e => { if (!disabled) e.currentTarget.style.opacity = "0.8"; }}
+                onMouseLeave={e => { if (!disabled) e.currentTarget.style.opacity = "1"; }}
               >{label}</button>
             ))}
           </div>
+
+          {/* ── MOBILE INLINE RESULTS DRAWER ── */}
+          {isMobile && mobileResult && (
+            <div style={{
+              flex: 1, minHeight: 0, overflow: "auto",
+              background: "#07070f", border: "1px solid #1a1a2e",
+              borderRadius: 8, padding: "10px 12px",
+            }}>
+              {/* Header row */}
+              <div style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                marginBottom: 8,
+              }}>
+                <span style={{ fontSize: 11, color: S.muted, textTransform: "uppercase", letterSpacing: "0.08em" }}>
+                  {mobileResult.type === "output" ? "Output"
+                    : mobileResult.type === "tests" ? "Test Results"
+                    : "AI Feedback"}
+                </span>
+                <button onClick={() => setMobileResult(null)} style={{
+                  background: "transparent", border: "none", color: S.muted,
+                  fontSize: 16, cursor: "pointer", lineHeight: 1, padding: "0 4px",
+                }}>×</button>
+              </div>
+
+              {/* Output */}
+              {mobileResult.type === "output" && (
+                <pre style={{
+                  color: "#00ff41", fontSize: 12, margin: 0,
+                  whiteSpace: "pre-wrap", wordBreak: "break-all", lineHeight: 1.6,
+                }}>{mobileResult.content}</pre>
+              )}
+
+              {/* Tests */}
+              {mobileResult.type === "tests" && (
+                mobileResult.content === "running" ? (
+                  <p style={{ color: S.muted, fontSize: 12 }}>Running tests...</p>
+                ) : (
+                  <>
+                    {mobileResult.content.results.length === 0 ? (
+                      <p style={{ color: S.muted, fontSize: 12 }}>No results.</p>
+                    ) : mobileResult.content.results.map((t, i) => (
+                      <div key={i} style={{
+                        display: "flex", justifyContent: "space-between",
+                        padding: "5px 8px", marginBottom: 4,
+                        background: t.passed ? "rgba(0,255,65,0.05)" : "rgba(220,53,69,0.08)",
+                        border: `1px solid ${t.passed ? "rgba(0,255,65,0.2)" : "rgba(220,53,69,0.25)"}`,
+                        borderRadius: 5, fontSize: 12,
+                      }}>
+                        <span style={{ color: S.muted }}>{t.input != null ? `input: ${String(t.input)}` : "Hidden"}</span>
+                        <span style={{ color: t.passed ? S.accent : "#ff4d6d", fontWeight: 700 }}>
+                          {t.passed ? "✓ PASS" : "✗ FAIL"}
+                        </span>
+                      </div>
+                    ))}
+                    <div style={{
+                      marginTop: 8, padding: "6px 10px",
+                      background: "rgba(0,255,65,0.08)", border: "1px solid rgba(0,255,65,0.2)",
+                      borderRadius: 5, color: S.accent, fontWeight: 700, fontSize: 13, textAlign: "center",
+                    }}>
+                      Score: {mobileResult.content.score} / 100
+                    </div>
+                  </>
+                )
+              )}
+
+              {/* AI Feedback */}
+              {mobileResult.type === "feedback" && (
+                <div style={{
+                  color: S.text, fontSize: 12, lineHeight: 1.7,
+                  whiteSpace: "pre-wrap",
+                }}>{mobileResult.content}</div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -987,14 +1114,6 @@ function App() {
         ::-webkit-scrollbar-thumb:hover { background: #2e2e4a; }
         select option { background: #0a0a14; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-        @media (max-width: 768px) {
-          .mobile-toggle { display: flex !important; }
-        }
-        @media (min-width: 769px) {
-          .mobile-toggle { display: none !important; }
-          [data-left] { display: block !important; }
-          [data-right] { display: flex !important; }
-        }
       `}</style>
     </div>
   );
