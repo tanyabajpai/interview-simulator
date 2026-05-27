@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import {
   runCode,
   runTests,
@@ -17,27 +17,161 @@ import {
 // TIMER LIMITS PER DIFFICULTY
 // =========================
 const TIMER_LIMITS = {
-  easy: 5 * 60,    // 5 minutes
-  medium: 10 * 60, // 10 minutes
-  hard: 15 * 60,   // 15 minutes
+  easy: 5 * 60,
+  medium: 10 * 60,
+  hard: 15 * 60,
 };
 
-// Format seconds → "MM:SS"
 const formatTime = (seconds) => {
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 };
 
+// =========================
+// SIMPLE SYNTAX HIGHLIGHTER
+// Highlights Python keywords in the textarea overlay
+// =========================
+const KEYWORDS = ["def","return","if","elif","else","for","while","in","not","and","or","True","False","None","import","from","class","pass","break","continue","lambda","try","except","finally","with","as","raise","yield","len","range","print","int","str","list","dict","set","tuple","sorted","min","max","sum","abs","enumerate","zip","map","filter","append","extend","pop","items","keys","values","self","__init__"];
+
+function highlight(code) {
+  const escaped = code
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+
+  // Strings
+  let result = escaped.replace(/("""[\s\S]*?"""|'''[\s\S]*?'''|"[^"\n]*"|'[^'\n]*')/g,
+    '<span style="color:#f1fa8c">$1</span>');
+
+  // Comments
+  result = result.replace(/(#[^\n]*)/g,
+    '<span style="color:#6272a4;font-style:italic">$1</span>');
+
+  // Numbers
+  result = result.replace(/\b(\d+\.?\d*)\b/g,
+    '<span style="color:#bd93f9">$1</span>');
+
+  // Keywords
+  KEYWORDS.forEach(kw => {
+    result = result.replace(
+      new RegExp(`\\b(${kw})\\b`, 'g'),
+      '<span style="color:#ff79c6;font-weight:600">$1</span>'
+    );
+  });
+
+  return result;
+}
+
+// =========================
+// HIGHLIGHTED EDITOR COMPONENT
+// Textarea layered over a pre for syntax highlighting
+// =========================
+function CodeEditor({ value, onChange, disabled, timedOut }) {
+  const taRef = useRef(null);
+  const preRef = useRef(null);
+
+  const syncScroll = () => {
+    if (preRef.current && taRef.current) {
+      preRef.current.scrollTop = taRef.current.scrollTop;
+      preRef.current.scrollLeft = taRef.current.scrollLeft;
+    }
+  };
+
+  const sharedStyle = {
+    position: "absolute", top: 0, left: 0,
+    width: "100%", height: "100%",
+    margin: 0, padding: "14px 16px",
+    fontFamily: "'Fira Code', 'Cascadia Code', monospace",
+    fontSize: 14, lineHeight: "1.7",
+    tabSize: 4, whiteSpace: "pre",
+    overflowWrap: "normal", overflow: "auto",
+    boxSizing: "border-box",
+    letterSpacing: "0.02em",
+  };
+
+  return (
+    <div style={{
+      position: "relative",
+      width: "100%", height: "100%",
+      borderRadius: 10,
+      border: timedOut ? "1.5px solid #dc3545" : "1.5px solid #2a2a3a",
+      overflow: "hidden",
+      background: timedOut ? "#1a0008" : "#0d0d14",
+    }}>
+      {/* Syntax-highlighted display layer */}
+      <pre
+        ref={preRef}
+        aria-hidden="true"
+        style={{
+          ...sharedStyle,
+          color: timedOut ? "#ff6b6b" : "#00ff41",
+          background: "transparent",
+          pointerEvents: "none",
+          zIndex: 1,
+          overflowY: "scroll",
+        }}
+        dangerouslySetInnerHTML={{ __html: highlight(value) + "\n" }}
+      />
+      {/* Transparent textarea on top */}
+      <textarea
+        ref={taRef}
+        value={value}
+        onChange={(e) => !timedOut && onChange(e.target.value)}
+        onScroll={syncScroll}
+        readOnly={timedOut || disabled}
+        spellCheck={false}
+        autoCorrect="off"
+        autoCapitalize="off"
+        style={{
+          ...sharedStyle,
+          color: "transparent",
+          caretColor: timedOut ? "#ff6b6b" : "#00ff41",
+          background: "transparent",
+          zIndex: 2,
+          resize: "none",
+          outline: "none",
+          border: "none",
+          cursor: timedOut ? "not-allowed" : "text",
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Tab") {
+            e.preventDefault();
+            const s = e.target.selectionStart;
+            const en = e.target.selectionEnd;
+            const newVal = value.substring(0, s) + "    " + value.substring(en);
+            onChange(newVal);
+            setTimeout(() => { e.target.selectionStart = e.target.selectionEnd = s + 4; }, 0);
+          }
+        }}
+      />
+      {timedOut && (
+        <div style={{
+          position: "absolute", top: 10, right: 12, zIndex: 3,
+          background: "#dc3545", color: "#fff",
+          padding: "3px 10px", borderRadius: 4, fontSize: 11,
+          fontWeight: "bold", letterSpacing: "0.08em",
+        }}>TIME'S UP</div>
+      )}
+    </div>
+  );
+}
+
+// =========================
+// MAIN APP
+// =========================
 function App() {
   const [code, setCode] = useState("def solution():\n    pass");
   const [question, setQuestion] = useState(null);
   const [difficulty, setDifficulty] = useState("easy");
 
   const [output, setOutput] = useState("");
+  const [outputLoading, setOutputLoading] = useState(false);
   const [tests, setTests] = useState([]);
-  const [score, setScore] = useState(0);
+  const [testsLoading, setTestsLoading] = useState(false);
+  const [score, setScore] = useState(null);
   const [feedback, setFeedback] = useState("");
+  const [feedbackLoading, setFeedbackLoading] = useState(false);
 
   const [stats, setStats] = useState(null);
   const [leaderboard, setLeaderboard] = useState([]);
@@ -49,15 +183,19 @@ function App() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [authError, setAuthError] = useState("");
+  const [authLoading, setAuthLoading] = useState(false);
 
   const [token, setToken] = useState(localStorage.getItem("token"));
+  const [loggedInUser, setLoggedInUser] = useState(localStorage.getItem("username") || "");
 
-  // "login" | "main"
   const [screen, setScreen] = useState(
-    localStorage.getItem("token") ? "main" : "login"
+    localStorage.getItem("token") ? "main" : "landing"
   );
 
   const [backendStatus, setBackendStatus] = useState("idle");
+  const [activeTab, setActiveTab] = useState("output"); // "output" | "tests" | "feedback"
+  const [mobilePanel, setMobilePanel] = useState("left"); // "left" | "right"
+  const [submitSuccess, setSubmitSuccess] = useState(false);
 
   // =========================
   // LOAD QUESTION
@@ -66,17 +204,16 @@ function App() {
     setQuestion(null);
     setTimedOut(false);
     setTimeLeft(TIMER_LIMITS[difficulty]);
+    setOutput("");
+    setTests([]);
+    setScore(null);
+    setFeedback("");
+    setSubmitSuccess(false);
     try {
       const res = await getQuestions(difficulty);
-      const q = res.data;
-      setQuestion(q);
+      setQuestion(res.data);
       setCode("def solution():\n    pass");
-      setOutput("");
-      setTests([]);
-      setScore(0);
-      setFeedback("");
-    } catch (err) {
-      console.error("Question load error:", err);
+    } catch {
       setQuestion({
         title: "Failed to load",
         description: "Could not reach the server. Try clicking Next or refreshing.",
@@ -88,97 +225,91 @@ function App() {
   // AUTH
   // =========================
   const handleLogin = async () => {
-    setAuthError("");
+    setAuthError(""); setAuthLoading(true);
     try {
       const res = await login({ username, password });
       const accessToken = res.data.access_token;
       localStorage.setItem("token", accessToken);
+      localStorage.setItem("username", username);
       setToken(accessToken);
+      setLoggedInUser(username);
       setScreen("main");
     } catch {
       setAuthError("Invalid username or password.");
-    }
+    } finally { setAuthLoading(false); }
   };
 
   const handleSignup = async () => {
-    setAuthError("");
-    if (!username || !password) {
-      setAuthError("Username and password are required.");
-      return;
-    }
+    setAuthError(""); setAuthLoading(true);
+    if (!username || !password) { setAuthError("Both fields required."); setAuthLoading(false); return; }
+    if (password.length < 4) { setAuthError("Password must be at least 4 characters."); setAuthLoading(false); return; }
     try {
       await signup({ username, password });
       const res = await login({ username, password });
       const accessToken = res.data.access_token;
       localStorage.setItem("token", accessToken);
+      localStorage.setItem("username", username);
       setToken(accessToken);
+      setLoggedInUser(username);
       setScreen("main");
     } catch {
       setAuthError("Signup failed. Username may already exist.");
-    }
-  };
-
-  const handleSkip = () => {
-    setScreen("main");
+    } finally { setAuthLoading(false); }
   };
 
   const handleLogout = () => {
     localStorage.removeItem("token");
-    setToken(null);
-    setStats(null);
-    setHistory([]);
-    setScreen("login");
-    setUsername("");
-    setPassword("");
+    localStorage.removeItem("username");
+    setToken(null); setLoggedInUser("");
+    setStats(null); setHistory([]);
+    setScreen("landing");
+    setUsername(""); setPassword("");
   };
 
   // =========================
   // ACTIONS
   // =========================
   const handleRun = async () => {
+    setOutputLoading(true); setActiveTab("output");
     try {
       const res = await runCode(code);
-      setOutput(res.data.output || "");
+      setOutput(res.data.output || "(no output)");
     } catch {
-      setOutput("Error running code");
-    }
+      setOutput("Error running code.");
+    } finally { setOutputLoading(false); }
   };
 
   const handleTest = async () => {
     if (!question) return;
+    setTestsLoading(true); setActiveTab("tests");
     try {
       const res = await runTests(code, question.title);
       setTests(res.data.results || []);
-      setScore(res.data.score || 0);
+      setScore(res.data.score ?? 0);
     } catch (err) {
       console.error("Test error:", err);
-    }
+    } finally { setTestsLoading(false); }
   };
 
   const handleAI = async () => {
     if (!question) return;
+    setFeedbackLoading(true); setActiveTab("feedback");
     try {
       const res = await getAIFeedback(code, question.title);
       const d = res.data;
-      const feedbackText =
-        typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d);
-      setFeedback(feedbackText);
+      setFeedback(typeof d === "string" ? d : d.feedback || d.message || JSON.stringify(d));
     } catch {
-      setFeedback("AI feedback failed");
-    }
+      setFeedback("AI feedback failed.");
+    } finally { setFeedbackLoading(false); }
   };
 
   const handleSubmit = async () => {
-    if (!token) {
-      alert("Please log in to submit!");
-      return;
-    }
+    if (!token) { alert("Please log in to submit!"); return; }
     try {
-      await saveAttempt({ question: question.title, score });
-      alert("Submitted!");
-      fetchStats();
-      fetchLeaderboard();
-      fetchHistory();
+      await saveAttempt({ question: question.title, score: score ?? 0 });
+      setSubmitSuccess(true);
+      setTimeout(() => setSubmitSuccess(false), 3000);
+      fetchStats(); fetchLeaderboard(); fetchHistory();
     } catch {
       alert("Submit failed");
     }
@@ -189,59 +320,39 @@ function App() {
   // =========================
   const fetchStats = useCallback(async () => {
     if (!token) return;
-    try {
-      const res = await getStats();
-      setStats(res.data);
-    } catch (err) {
-      console.error("Stats error:", err);
-    }
+    try { const res = await getStats(); setStats(res.data); } catch {}
   }, [token]);
 
   const fetchLeaderboard = async () => {
     try {
       const res = await getLeaderboard();
       let data = res.data;
-      if (!Array.isArray(data)) {
-        data = Array.isArray(data.leaderboard) ? data.leaderboard : [];
-      }
+      if (!Array.isArray(data)) data = Array.isArray(data.leaderboard) ? data.leaderboard : [];
       setLeaderboard(data);
-    } catch {
-      setLeaderboard([]);
-    }
+    } catch { setLeaderboard([]); }
   };
 
   const fetchHistory = useCallback(async () => {
     if (!token) return;
-    try {
-      const res = await getHistory();
-      setHistory(res.data || []);
-    } catch (err) {
-      console.error("History error:", err);
-    }
+    try { const res = await getHistory(); setHistory(res.data || []); } catch {}
   }, [token]);
 
   // =========================
   // TIMER
-  // Counts down; locks editor at 00:00
   // =========================
   useEffect(() => {
-    if (timedOut) return;
-    if (timeLeft <= 0) {
-      setTimedOut(true);
-      return;
-    }
-    const t = setTimeout(() => setTimeLeft((prev) => prev - 1), 1000);
+    if (timedOut || timeLeft <= 0) { if (timeLeft <= 0) setTimedOut(true); return; }
+    const t = setTimeout(() => setTimeLeft((p) => p - 1), 1000);
     return () => clearTimeout(t);
   }, [timeLeft, timedOut]);
 
-  // Reset timer when difficulty changes
   useEffect(() => {
     setTimeLeft(TIMER_LIMITS[difficulty]);
     setTimedOut(false);
   }, [difficulty]);
 
   // =========================
-  // BOOT SEQUENCE — runs when main screen appears
+  // BOOT
   // =========================
   useEffect(() => {
     if (screen !== "main") return;
@@ -250,10 +361,7 @@ function App() {
       const isUp = await wakeUpBackend();
       if (!isUp) {
         setBackendStatus("failed");
-        setQuestion({
-          title: "Server unavailable",
-          description: "The backend could not be reached. Please try again in a minute.",
-        });
+        setQuestion({ title: "Server unavailable", description: "The backend could not be reached. Please try again." });
         return;
       }
       setBackendStatus("ready");
@@ -261,34 +369,200 @@ function App() {
       fetchLeaderboard();
     };
     boot();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
 
-  // Re-load question when difficulty changes (backend already awake)
   useEffect(() => {
     if (backendStatus !== "ready") return;
     loadQuestion();
     fetchLeaderboard();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [difficulty]);
 
-  useEffect(() => {
-    fetchStats();
-    fetchHistory();
-  }, [fetchStats, fetchHistory]);
+  useEffect(() => { fetchStats(); fetchHistory(); }, [fetchStats, fetchHistory]);
 
-  // =========================
-  // TIMER COLOR
-  // =========================
-  const timerColor = timedOut
-    ? "#dc3545"
-    : timeLeft < 60
-    ? "#dc3545"
-    : timeLeft < 120
-    ? "#fd7e14"
-    : "#28a745";
-
+  const timerColor = timedOut ? "#dc3545" : timeLeft < 60 ? "#dc3545" : timeLeft < 120 ? "#fd7e14" : "#00ff41";
   const actionsDisabled = backendStatus === "waking" || timedOut;
+
+  // =========================
+  // SHARED STYLES
+  // =========================
+  const S = {
+    panelBg: "#0a0a12",
+    border: "1.5px solid #1a1a2e",
+    accent: "#00ff41",
+    accentDim: "#00cc33",
+    font: "'Fira Code', 'Cascadia Code', monospace",
+    text: "#c8d6e5",
+    muted: "#5a6a7a",
+    cardBg: "#0f0f1e",
+  };
+
+  // =========================
+  // LANDING SCREEN
+  // =========================
+  if (screen === "landing") {
+    return (
+      <div style={{
+        minHeight: "100vh", background: "#050508",
+        fontFamily: S.font, color: S.text,
+        overflowX: "hidden",
+      }}>
+        {/* Grid background */}
+        <div style={{
+          position: "fixed", inset: 0, zIndex: 0,
+          backgroundImage: `
+            linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px)
+          `,
+          backgroundSize: "40px 40px",
+          pointerEvents: "none",
+        }} />
+
+        {/* Glow orb */}
+        <div style={{
+          position: "fixed", top: "-20vh", left: "50%", transform: "translateX(-50%)",
+          width: "80vw", height: "60vh", borderRadius: "50%",
+          background: "radial-gradient(ellipse, rgba(0,255,65,0.07) 0%, transparent 70%)",
+          pointerEvents: "none", zIndex: 0,
+        }} />
+
+        {/* NAV */}
+        <nav style={{
+          position: "relative", zIndex: 10,
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          padding: "20px 40px",
+          borderBottom: "1px solid rgba(0,255,65,0.1)",
+        }}>
+          <span style={{ color: S.accent, fontSize: 18, fontWeight: 700, letterSpacing: "0.05em" }}>
+            {"<"} InterviewSim {"/>"}
+          </span>
+          <div style={{ display: "flex", gap: 12 }}>
+            <button onClick={() => setScreen("login")} style={{
+              background: "transparent", border: "1px solid rgba(0,255,65,0.4)",
+              color: S.accent, padding: "8px 20px", borderRadius: 6,
+              fontFamily: S.font, fontSize: 13, cursor: "pointer",
+              transition: "all 0.2s",
+            }}
+              onMouseEnter={e => { e.target.style.background = "rgba(0,255,65,0.1)"; }}
+              onMouseLeave={e => { e.target.style.background = "transparent"; }}
+            >Login</button>
+            <button onClick={() => setScreen("login")} style={{
+              background: S.accent, border: "none",
+              color: "#000", padding: "8px 20px", borderRadius: 6,
+              fontFamily: S.font, fontSize: 13, fontWeight: 700, cursor: "pointer",
+            }}>Get Started</button>
+          </div>
+        </nav>
+
+        {/* HERO */}
+        <div style={{
+          position: "relative", zIndex: 1,
+          textAlign: "center", padding: "100px 20px 60px",
+        }}>
+          <div style={{
+            display: "inline-block",
+            background: "rgba(0,255,65,0.08)", border: "1px solid rgba(0,255,65,0.2)",
+            color: S.accent, fontSize: 12, padding: "4px 14px", borderRadius: 20,
+            marginBottom: 28, letterSpacing: "0.12em", textTransform: "uppercase",
+          }}>
+            AI-Powered Coding Practice
+          </div>
+          <h1 style={{
+            fontSize: "clamp(36px, 7vw, 80px)",
+            fontWeight: 800, lineHeight: 1.1, margin: "0 0 24px",
+            color: "#fff",
+            textShadow: "0 0 60px rgba(0,255,65,0.2)",
+          }}>
+            Ace Your Next<br />
+            <span style={{ color: S.accent }}>Coding Interview</span>
+          </h1>
+          <p style={{
+            fontSize: "clamp(14px, 2vw, 18px)", color: S.muted,
+            maxWidth: 560, margin: "0 auto 44px", lineHeight: 1.7,
+          }}>
+            Timed DSA challenges with real test cases, AI code feedback, and a global leaderboard.
+            Practice like it's the real thing.
+          </p>
+          <div style={{ display: "flex", gap: 14, justifyContent: "center", flexWrap: "wrap" }}>
+            <button onClick={() => setScreen("login")} style={{
+              background: S.accent, color: "#000", border: "none",
+              padding: "14px 36px", borderRadius: 8, fontFamily: S.font,
+              fontSize: 15, fontWeight: 700, cursor: "pointer",
+              boxShadow: "0 0 30px rgba(0,255,65,0.3)",
+            }}>Start Practicing →</button>
+            <button onClick={() => { setScreen("main"); }} style={{
+              background: "transparent", color: S.text,
+              border: "1px solid rgba(255,255,255,0.15)",
+              padding: "14px 36px", borderRadius: 8, fontFamily: S.font,
+              fontSize: 15, cursor: "pointer",
+            }}>Try as Guest</button>
+          </div>
+        </div>
+
+        {/* STATS BAR */}
+        <div style={{
+          position: "relative", zIndex: 1,
+          display: "flex", justifyContent: "center", gap: "60px",
+          padding: "40px 20px", flexWrap: "wrap",
+        }}>
+          {[["60+", "Challenges"], ["3", "Difficulty Levels"], ["AI", "Code Feedback"], ["⚡", "Real-time Judge"]].map(([val, label]) => (
+            <div key={label} style={{ textAlign: "center" }}>
+              <div style={{ fontSize: 32, fontWeight: 800, color: S.accent }}>{val}</div>
+              <div style={{ fontSize: 12, color: S.muted, letterSpacing: "0.1em", textTransform: "uppercase", marginTop: 4 }}>{label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* FEATURES */}
+        <div style={{
+          position: "relative", zIndex: 1,
+          display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
+          gap: 20, maxWidth: 1000, margin: "0 auto", padding: "20px 30px 80px",
+        }}>
+          {[
+            { icon: "⏱", title: "Timed Challenges", desc: "Real interview pressure. 5, 10, or 15 minute limits that count down and lock your editor." },
+            { icon: "🤖", title: "AI Feedback", desc: "Get instant analysis of your code: logic, edge cases, and style — all powered by Claude." },
+            { icon: "🧪", title: "Test Runner", desc: "Hidden and visible test cases run your code in real-time against expected outputs." },
+            { icon: "🏆", title: "Leaderboard", desc: "Compete globally. See how your score stacks up against other developers." },
+            { icon: "📈", title: "Track Progress", desc: "Login to save attempts, view history, and watch your average score improve." },
+            { icon: "🎯", title: "3 Difficulties", desc: "Easy warm-ups, medium challenges, and hard brain-benders. Progress at your own pace." },
+          ].map(({ icon, title, desc }) => (
+            <div key={title} style={{
+              background: S.cardBg, border: S.border,
+              borderRadius: 12, padding: "24px 22px",
+              transition: "border-color 0.2s, transform 0.2s",
+            }}
+              onMouseEnter={e => { e.currentTarget.style.borderColor = "rgba(0,255,65,0.3)"; e.currentTarget.style.transform = "translateY(-2px)"; }}
+              onMouseLeave={e => { e.currentTarget.style.borderColor = "#1a1a2e"; e.currentTarget.style.transform = "translateY(0)"; }}
+            >
+              <div style={{ fontSize: 28, marginBottom: 12 }}>{icon}</div>
+              <div style={{ color: "#fff", fontWeight: 700, marginBottom: 8, fontSize: 15 }}>{title}</div>
+              <div style={{ color: S.muted, fontSize: 13, lineHeight: 1.6 }}>{desc}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* CTA */}
+        <div style={{
+          position: "relative", zIndex: 1, textAlign: "center",
+          padding: "60px 20px 80px",
+          borderTop: "1px solid rgba(0,255,65,0.08)",
+        }}>
+          <h2 style={{ color: "#fff", fontSize: "clamp(24px,4vw,40px)", marginBottom: 16 }}>
+            Ready to level up?
+          </h2>
+          <p style={{ color: S.muted, marginBottom: 32, fontSize: 14 }}>Free to use. No credit card. Start in seconds.</p>
+          <button onClick={() => setScreen("login")} style={{
+            background: S.accent, color: "#000", border: "none",
+            padding: "16px 48px", borderRadius: 8, fontFamily: S.font,
+            fontSize: 16, fontWeight: 700, cursor: "pointer",
+            boxShadow: "0 0 40px rgba(0,255,65,0.25)",
+          }}>Create Free Account</button>
+        </div>
+      </div>
+    );
+  }
 
   // =========================
   // LOGIN SCREEN
@@ -296,93 +570,75 @@ function App() {
   if (screen === "login") {
     return (
       <div style={{
-        minHeight: "100vh",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        background: "#0d0d0d",
-        fontFamily: "monospace",
+        minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
+        background: "#050508", fontFamily: S.font,
+        backgroundImage: `linear-gradient(rgba(0,255,65,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0,255,65,0.03) 1px, transparent 1px)`,
+        backgroundSize: "40px 40px",
       }}>
         <div style={{
-          background: "#1a1a1a",
-          border: "1px solid #333",
-          borderRadius: 10,
-          padding: "40px 48px",
-          width: 360,
-          boxShadow: "0 4px 24px rgba(0,0,0,0.5)",
+          background: "#0a0a14", border: "1.5px solid #1a1a30",
+          borderRadius: 14, padding: "44px 48px", width: "100%", maxWidth: 380,
+          boxShadow: "0 8px 40px rgba(0,0,0,0.6)",
         }}>
-          <h1 style={{ color: "#00ff41", marginTop: 0, marginBottom: 4, fontSize: 22 }}>
-            🧑‍💻 Interview Simulator
-          </h1>
-          <p style={{ color: "#666", fontSize: 13, marginBottom: 28 }}>
-            Practice DSA with AI feedback
-          </p>
+          <div style={{ textAlign: "center", marginBottom: 32 }}>
+            <div style={{ color: S.accent, fontSize: 20, fontWeight: 700, marginBottom: 6 }}>
+              {"<"} InterviewSim {"/>"}
+            </div>
+            <p style={{ color: S.muted, fontSize: 13, margin: 0 }}>Practice DSA with AI feedback</p>
+          </div>
 
-          <input
-            placeholder="Username"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            style={{
-              display: "block", width: "100%", marginBottom: 10,
-              padding: "9px 12px", background: "#0d0d0d", color: "#fff",
-              border: "1px solid #444", borderRadius: 5, fontFamily: "monospace",
-              fontSize: 14, boxSizing: "border-box",
-            }}
-          />
-          <input
-            type="password"
-            placeholder="Password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-            style={{
-              display: "block", width: "100%", marginBottom: 14,
-              padding: "9px 12px", background: "#0d0d0d", color: "#fff",
-              border: "1px solid #444", borderRadius: 5, fontFamily: "monospace",
-              fontSize: 14, boxSizing: "border-box",
-            }}
-          />
+          {[
+            { placeholder: "Username", type: "text", val: username, set: setUsername },
+            { placeholder: "Password", type: "password", val: password, set: setPassword },
+          ].map(({ placeholder, type, val, set }) => (
+            <input
+              key={placeholder} type={type} placeholder={placeholder}
+              value={val} onChange={(e) => set(e.target.value)}
+              onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+              style={{
+                display: "block", width: "100%", marginBottom: 12,
+                padding: "11px 14px", background: "#060610", color: "#fff",
+                border: "1.5px solid #1e1e35", borderRadius: 7, fontFamily: S.font,
+                fontSize: 14, boxSizing: "border-box", outline: "none",
+                transition: "border-color 0.2s",
+              }}
+              onFocus={e => e.target.style.borderColor = "rgba(0,255,65,0.5)"}
+              onBlur={e => e.target.style.borderColor = "#1e1e35"}
+            />
+          ))}
 
           {authError && (
-            <p style={{ color: "#ff4d4d", fontSize: 13, marginBottom: 10, marginTop: -6 }}>
-              {authError}
+            <p style={{ color: "#ff4d4d", fontSize: 12, marginBottom: 10, marginTop: -4 }}>
+              ⚠ {authError}
             </p>
           )}
 
-          <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
-            <button
-              onClick={handleLogin}
-              style={{
-                flex: 1, padding: "9px 0", background: "#00ff41", color: "#000",
-                border: "none", borderRadius: 5, fontFamily: "monospace",
-                fontSize: 14, fontWeight: "bold", cursor: "pointer",
-              }}
-            >
-              Login
-            </button>
-            <button
-              onClick={handleSignup}
-              style={{
-                flex: 1, padding: "9px 0", background: "#1a1a1a", color: "#00ff41",
-                border: "1px solid #00ff41", borderRadius: 5, fontFamily: "monospace",
-                fontSize: 14, cursor: "pointer",
-              }}
-            >
-              Sign Up
-            </button>
+          <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
+            {[
+              { label: authLoading ? "..." : "Login", fn: handleLogin, primary: true },
+              { label: authLoading ? "..." : "Sign Up", fn: handleSignup, primary: false },
+            ].map(({ label, fn, primary }) => (
+              <button key={label} onClick={fn} disabled={authLoading} style={{
+                flex: 1, padding: "11px 0",
+                background: primary ? S.accent : "transparent",
+                color: primary ? "#000" : S.accent,
+                border: primary ? "none" : `1.5px solid ${S.accent}`,
+                borderRadius: 7, fontFamily: S.font, fontSize: 14,
+                fontWeight: primary ? 700 : 500, cursor: "pointer",
+              }}>{label}</button>
+            ))}
           </div>
 
-          <button
-            onClick={handleSkip}
-            style={{
-              width: "100%", padding: "8px 0", background: "transparent",
-              color: "#666", border: "1px solid #333", borderRadius: 5,
-              fontFamily: "monospace", fontSize: 13, cursor: "pointer",
-            }}
-          >
-            Skip — continue as guest
-          </button>
+          <button onClick={() => setScreen("main")} style={{
+            width: "100%", padding: "10px 0", background: "transparent",
+            color: S.muted, border: "1px solid #1e1e35", borderRadius: 7,
+            fontFamily: S.font, fontSize: 12, cursor: "pointer",
+          }}>Skip — continue as guest</button>
+
+          <button onClick={() => setScreen("landing")} style={{
+            width: "100%", padding: "8px 0", marginTop: 8, background: "transparent",
+            color: "#333", border: "none", fontFamily: S.font, fontSize: 11, cursor: "pointer",
+          }}>← Back to home</button>
         </div>
       </div>
     );
@@ -392,198 +648,354 @@ function App() {
   // MAIN SCREEN
   // =========================
   return (
-    <div style={{ display: "flex", padding: 20, fontFamily: "monospace" }}>
-      {/* LEFT PANEL */}
-      <div style={{ width: "30%", paddingRight: 20 }}>
+    <div style={{
+      display: "flex", flexDirection: "column",
+      height: "100vh", background: "#050508",
+      fontFamily: S.font, color: S.text, overflow: "hidden",
+    }}>
+      {/* TOP NAV */}
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "0 16px", height: 48, flexShrink: 0,
+        borderBottom: "1px solid #12121f", background: "#07070f",
+      }}>
+        <span
+          onClick={() => setScreen("landing")}
+          style={{ color: S.accent, fontWeight: 700, fontSize: 14, cursor: "pointer", letterSpacing: "0.04em" }}>
+          {"<"} InterviewSim {"/>"}
+        </span>
 
-        {backendStatus === "waking" && (
-          <div style={{
-            background: "#fff3cd", border: "1px solid #ffc107",
-            borderRadius: 6, padding: "10px 14px", marginBottom: 12, fontSize: 13,
-          }}>
-            ⏳ <strong>Server is waking up</strong> — ~30 seconds on first load.
-            <br /><span style={{ color: "#666" }}>Render free tier sleeps after inactivity.</span>
-          </div>
-        )}
-        {backendStatus === "failed" && (
-          <div style={{
-            background: "#f8d7da", border: "1px solid #f5c6cb",
-            borderRadius: 6, padding: "10px 14px", marginBottom: 12, fontSize: 13,
-          }}>
-            ❌ <strong>Could not reach server.</strong>{" "}
-            <button onClick={() => window.location.reload()} style={{ marginLeft: 8 }}>Retry</button>
-          </div>
-        )}
+        {/* Mobile panel toggle */}
+        <div style={{ display: "flex", gap: 4 }} className="mobile-toggle">
+          {["left", "right"].map(p => (
+            <button key={p} onClick={() => setMobilePanel(p)} style={{
+              padding: "4px 12px", fontSize: 11, borderRadius: 4,
+              background: mobilePanel === p ? "rgba(0,255,65,0.15)" : "transparent",
+              color: mobilePanel === p ? S.accent : S.muted,
+              border: `1px solid ${mobilePanel === p ? "rgba(0,255,65,0.3)" : "#1a1a2e"}`,
+              cursor: "pointer",
+            }}>{p === "left" ? "📋 Info" : "💻 Code"}</button>
+          ))}
+        </div>
 
-        {token ? (
-          <div style={{ marginBottom: 12 }}>
-            <span style={{ color: "#28a745", fontSize: 13 }}>✅ Logged in</span>
-            {"  "}
-            <button
-              onClick={handleLogout}
-              style={{
-                fontSize: 12, padding: "2px 8px", cursor: "pointer",
-                background: "transparent", border: "1px solid #ccc", borderRadius: 4,
-              }}
-            >
-              Logout
-            </button>
-          </div>
-        ) : (
-          <div style={{ marginBottom: 12 }}>
-            <span style={{ color: "#888", fontSize: 13 }}>👤 Guest — </span>
-            <button
-              onClick={() => setScreen("login")}
-              style={{
-                fontSize: 12, padding: "2px 8px", cursor: "pointer",
-                background: "transparent", border: "1px solid #00ff41",
-                borderRadius: 4, color: "#00ff41",
-              }}
-            >
-              Log in
-            </button>
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {token ? (
+            <>
+              <span style={{ color: S.accent, fontSize: 12 }}>✓ {loggedInUser}</span>
+              <button onClick={handleLogout} style={{
+                fontSize: 11, padding: "4px 10px", background: "transparent",
+                border: "1px solid #2a2a3a", borderRadius: 4, color: S.muted, cursor: "pointer",
+              }}>Logout</button>
+            </>
+          ) : (
+            <button onClick={() => setScreen("login")} style={{
+              fontSize: 11, padding: "4px 12px", background: "transparent",
+              border: `1px solid ${S.accent}`, borderRadius: 4, color: S.accent, cursor: "pointer",
+            }}>Log in</button>
+          )}
+        </div>
+      </div>
 
-        <h3 style={{ marginBottom: 6 }}>Difficulty</h3>
-        <select
-          value={difficulty}
-          onChange={(e) => setDifficulty(e.target.value)}
-          disabled={backendStatus === "waking"}
-          style={{ marginBottom: 12 }}
-        >
-          <option value="easy">Easy (5 min)</option>
-          <option value="medium">Medium (10 min)</option>
-          <option value="hard">Hard (15 min)</option>
-        </select>
-
-        {backendStatus === "waking" ? (
-          <p style={{ color: "#888", fontStyle: "italic" }}>⏳ Waiting for server...</p>
-        ) : question ? (
-          <>
-            <h2 style={{ marginBottom: 4 }}>{question.title}</h2>
-            <p style={{ marginTop: 0 }}>{question.description}</p>
-          </>
-        ) : (
-          <p>Loading question...</p>
-        )}
-
-        {/* TIMER */}
-        <h3 style={{ color: timerColor, fontSize: 20, marginBottom: 4 }}>
-          ⏱ {formatTime(timeLeft)}
-        </h3>
-        {timedOut && (
-          <p style={{
-            color: "#dc3545", fontWeight: "bold", fontSize: 13,
-            background: "#fff0f0", border: "1px solid #f5c6cb",
-            borderRadius: 4, padding: "6px 10px", marginBottom: 8,
-          }}>
-            ⛔ Time's up! Click Next for a new question.
-          </p>
-        )}
-
-        <h3>Stats</h3>
-        {stats ? (
-          <>
-            <p>Attempts: {stats.total_attempts}</p>
-            <p>Avg Score: {stats.avg_score}</p>
-          </>
-        ) : (
-          <p style={{ color: "#888", fontSize: 13 }}>Login to see stats</p>
-        )}
-
-        <h3>Output</h3>
-        <pre style={{
-          background: "#111", color: "#0f0", padding: 8,
-          whiteSpace: "pre-wrap", wordBreak: "break-all",
-          overflowX: "hidden", maxWidth: "100%",
-          fontSize: 13, borderRadius: 4, margin: 0,
+      {/* BACKEND BANNERS */}
+      {backendStatus === "waking" && (
+        <div style={{
+          background: "#1a1200", borderBottom: "1px solid #3a2a00",
+          padding: "8px 16px", fontSize: 12, color: "#ffd600", flexShrink: 0,
+          display: "flex", alignItems: "center", gap: 8,
         }}>
-          {output || "(no output)"}
-        </pre>
-
-        <h3>Tests</h3>
-        {tests.length === 0 ? (
-          <p>No test results yet</p>
-        ) : (
-          tests.map((t, i) => (
-            <p key={i}>
-              {t.input ?? "Hidden"} → {t.passed ? "✅ PASS" : "❌ FAIL"}
-            </p>
-          ))
-        )}
-
-        <h3>Score: {score}</h3>
-
-        <h3>AI Feedback</h3>
-        <div style={{ whiteSpace: "pre-wrap", background: "#f5f5f5", padding: 8 }}>
-          {feedback || "Click AI to get feedback"}
+          <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>⚙</span>
+          <strong>Server waking up</strong> — free tier sleeps after inactivity. Ready in ~30s.
         </div>
+      )}
+      {backendStatus === "failed" && (
+        <div style={{
+          background: "#1a0008", borderBottom: "1px solid #3a0010",
+          padding: "8px 16px", fontSize: 12, color: "#ff4d6d", flexShrink: 0,
+        }}>
+          ❌ <strong>Server unreachable.</strong>{" "}
+          <button onClick={() => window.location.reload()} style={{
+            marginLeft: 8, fontSize: 11, padding: "2px 8px",
+            background: "#3a0010", border: "1px solid #ff4d6d", color: "#ff4d6d", borderRadius: 4, cursor: "pointer",
+          }}>Retry</button>
+        </div>
+      )}
+      {submitSuccess && (
+        <div style={{
+          background: "#001a08", borderBottom: "1px solid #00ff41",
+          padding: "8px 16px", fontSize: 12, color: S.accent, flexShrink: 0,
+        }}>
+          ✅ Solution submitted successfully!
+        </div>
+      )}
 
-        <h3>History</h3>
-        {history.length === 0 ? (
-          <p>No history</p>
-        ) : (
-          history.map((h, i) => (
-            <p key={i}>{h.question} → {h.score}</p>
-          ))
-        )}
+      {/* MAIN CONTENT */}
+      <div style={{ display: "flex", flex: 1, overflow: "hidden" }}>
 
-        <h3>🏆 Leaderboard</h3>
-        {leaderboard.length === 0 ? (
-          <p>No entries yet</p>
-        ) : (
-          leaderboard.map((u, i) => (
-            <p key={i}>{i + 1}. {u.username} — {u.score}</p>
-          ))
-        )}
-      </div>
-
-      {/* RIGHT PANEL */}
-      <div style={{ width: "70%", position: "relative" }}>
-        <textarea
-          value={code}
-          onChange={(e) => !timedOut && setCode(e.target.value)}
-          readOnly={timedOut}
-          style={{
-            width: "100%",
-            height: "400px",
-            background: timedOut ? "#1a0000" : "#0d0d0d",
-            color: timedOut ? "#ff4d4d" : "#00ff41",
-            fontFamily: "monospace",
-            fontSize: 14,
-            padding: 12,
-            border: timedOut ? "1px solid #dc3545" : "1px solid #333",
-            boxSizing: "border-box",
-            cursor: timedOut ? "not-allowed" : "text",
-            opacity: timedOut ? 0.7 : 1,
-          }}
-        />
-
-        {timedOut && (
-          <div style={{
-            position: "absolute", top: 8, right: 12,
-            background: "#dc3545", color: "#fff",
-            padding: "3px 10px", borderRadius: 4, fontSize: 12, fontWeight: "bold",
-          }}>
-            TIME'S UP
+        {/* LEFT PANEL */}
+        <div style={{
+          width: "30%", minWidth: 240, borderRight: "1px solid #12121f",
+          overflowY: "auto", padding: "14px 16px", flexShrink: 0,
+          display: typeof window !== "undefined" && window.innerWidth < 768 && mobilePanel !== "left" ? "none" : "block",
+        }}>
+          {/* Difficulty */}
+          <div style={{ marginBottom: 14 }}>
+            <label style={{ fontSize: 10, color: S.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Difficulty</label>
+            <select value={difficulty} onChange={e => setDifficulty(e.target.value)}
+              disabled={backendStatus === "waking"}
+              style={{
+                display: "block", marginTop: 6, width: "100%",
+                background: "#0c0c1a", color: "#fff", border: "1px solid #1e1e35",
+                borderRadius: 6, padding: "7px 10px", fontFamily: S.font, fontSize: 13, cursor: "pointer",
+              }}>
+              <option value="easy">🟢 Easy — 5 min</option>
+              <option value="medium">🟡 Medium — 10 min</option>
+              <option value="hard">🔴 Hard — 15 min</option>
+            </select>
           </div>
-        )}
 
-        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
-          <button onClick={handleRun} disabled={actionsDisabled}>▶ Run</button>
-          <button onClick={handleTest} disabled={actionsDisabled}>🧪 Test</button>
-          <button onClick={handleAI} disabled={actionsDisabled}>🤖 AI</button>
-          <button onClick={handleSubmit} disabled={actionsDisabled}>✅ Submit</button>
-          <button
-            onClick={loadQuestion}
-            disabled={backendStatus === "waking"}
-            style={timedOut ? { background: "#00ff41", color: "#000", fontWeight: "bold" } : {}}
-          >
-            ⏭ Next
-          </button>
+          {/* Question */}
+          <div style={{
+            background: S.cardBg, border: S.border, borderRadius: 10,
+            padding: "14px", marginBottom: 14,
+          }}>
+            {backendStatus === "waking" ? (
+              <p style={{ color: S.muted, fontSize: 13, margin: 0, fontStyle: "italic" }}>⚙ Loading question...</p>
+            ) : question ? (
+              <>
+                <div style={{ color: "#fff", fontWeight: 700, fontSize: 15, marginBottom: 8 }}>
+                  {question.title}
+                </div>
+                <div style={{ color: S.text, fontSize: 13, lineHeight: 1.65 }}>
+                  {question.description}
+                </div>
+              </>
+            ) : (
+              <p style={{ color: S.muted, fontSize: 13, margin: 0 }}>Loading...</p>
+            )}
+          </div>
+
+          {/* Timer */}
+          <div style={{
+            background: S.cardBg, border: `1.5px solid ${timedOut ? "#dc3545" : timerColor === "#00ff41" ? "#1a1a2e" : timerColor + "44"}`,
+            borderRadius: 10, padding: "10px 14px", marginBottom: 14,
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+          }}>
+            <span style={{ fontSize: 11, color: S.muted, textTransform: "uppercase", letterSpacing: "0.1em" }}>Timer</span>
+            <span style={{ color: timerColor, fontWeight: 800, fontSize: 22, letterSpacing: "0.05em" }}>
+              {formatTime(timeLeft)}
+            </span>
+          </div>
+          {timedOut && (
+            <div style={{
+              background: "#1a0008", border: "1px solid #dc3545",
+              borderRadius: 6, padding: "8px 12px", marginBottom: 14,
+              color: "#ff4d6d", fontSize: 12, fontWeight: 600,
+            }}>
+              ⛔ Time's up! Click ⏭ Next for a new question.
+            </div>
+          )}
+
+          {/* Output / Tests / Feedback Tabs */}
+          <div style={{ marginBottom: 8 }}>
+            <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
+              {[
+                { id: "output", label: "Output" },
+                { id: "tests", label: `Tests${tests.length ? ` (${tests.length})` : ""}` },
+                { id: "feedback", label: "AI" },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                  flex: 1, padding: "6px 4px", fontSize: 11,
+                  background: activeTab === tab.id ? "rgba(0,255,65,0.1)" : "transparent",
+                  color: activeTab === tab.id ? S.accent : S.muted,
+                  border: `1px solid ${activeTab === tab.id ? "rgba(0,255,65,0.3)" : "#1a1a2e"}`,
+                  borderRadius: 5, cursor: "pointer", fontFamily: S.font,
+                  transition: "all 0.15s",
+                }}>{tab.label}</button>
+              ))}
+            </div>
+
+            {/* Output tab */}
+            {activeTab === "output" && (
+              <pre style={{
+                background: "#060610", color: "#00ff41", padding: "10px 12px",
+                borderRadius: 8, fontSize: 12, margin: 0,
+                border: "1px solid #1a1a2e", minHeight: 60,
+                whiteSpace: "pre-wrap", wordBreak: "break-all",
+                overflowX: "hidden", maxWidth: "100%", lineHeight: 1.6,
+              }}>
+                {outputLoading ? "Running..." : (output || "(no output yet)")}
+              </pre>
+            )}
+
+            {/* Tests tab */}
+            {activeTab === "tests" && (
+              <div>
+                {testsLoading ? (
+                  <p style={{ color: S.muted, fontSize: 12 }}>Running tests...</p>
+                ) : tests.length === 0 ? (
+                  <p style={{ color: S.muted, fontSize: 12 }}>No test results yet. Click 🧪 Test.</p>
+                ) : (
+                  <>
+                    {tests.map((t, i) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "6px 10px", marginBottom: 4,
+                        background: t.passed ? "rgba(0,255,65,0.05)" : "rgba(220,53,69,0.08)",
+                        border: `1px solid ${t.passed ? "rgba(0,255,65,0.2)" : "rgba(220,53,69,0.25)"}`,
+                        borderRadius: 6, fontSize: 12,
+                      }}>
+                        <span style={{ color: S.muted }}>{t.input != null ? `input: ${t.input}` : "Hidden test"}</span>
+                        <span style={{ color: t.passed ? S.accent : "#ff4d6d", fontWeight: 700 }}>
+                          {t.passed ? "✓ PASS" : "✗ FAIL"}
+                        </span>
+                      </div>
+                    ))}
+                    {score !== null && (
+                      <div style={{
+                        marginTop: 10, padding: "8px 12px",
+                        background: "rgba(0,255,65,0.08)", border: "1px solid rgba(0,255,65,0.2)",
+                        borderRadius: 6, color: S.accent, fontWeight: 700, fontSize: 14,
+                        textAlign: "center",
+                      }}>
+                        Score: {score} / 100
+                      </div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* AI Feedback tab */}
+            {activeTab === "feedback" && (
+              <div style={{
+                background: "#060610", border: "1px solid #1a1a2e",
+                borderRadius: 8, padding: "10px 12px", fontSize: 12, lineHeight: 1.7,
+                color: S.text, whiteSpace: "pre-wrap", minHeight: 60,
+              }}>
+                {feedbackLoading ? "🤖 Analyzing your code..." : (feedback || "Click 🤖 AI to get feedback on your solution.")}
+              </div>
+            )}
+          </div>
+
+          {/* Stats */}
+          {stats && (
+            <div style={{
+              background: S.cardBg, border: S.border, borderRadius: 10,
+              padding: "12px 14px", marginTop: 10, marginBottom: 10,
+            }}>
+              <div style={{ fontSize: 10, color: S.muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 8 }}>Your Stats</div>
+              <div style={{ display: "flex", gap: 20 }}>
+                <div>
+                  <div style={{ color: S.accent, fontWeight: 700, fontSize: 18 }}>{stats.total_attempts}</div>
+                  <div style={{ color: S.muted, fontSize: 10 }}>Attempts</div>
+                </div>
+                <div>
+                  <div style={{ color: S.accent, fontWeight: 700, fontSize: 18 }}>{stats.avg_score}</div>
+                  <div style={{ color: S.muted, fontSize: 10 }}>Avg Score</div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* History */}
+          {history.length > 0 && (
+            <div style={{ marginBottom: 10 }}>
+              <div style={{ fontSize: 10, color: S.muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>History</div>
+              {history.slice(0, 5).map((h, i) => (
+                <div key={i} style={{
+                  display: "flex", justifyContent: "space-between",
+                  padding: "5px 0", borderBottom: "1px solid #0f0f1e",
+                  fontSize: 11, color: S.muted,
+                }}>
+                  <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{h.question}</span>
+                  <span style={{ color: S.accent, marginLeft: 8 }}>{h.score}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Leaderboard */}
+          <div>
+            <div style={{ fontSize: 10, color: S.muted, textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 6 }}>🏆 Leaderboard</div>
+            {leaderboard.length === 0 ? (
+              <p style={{ color: S.muted, fontSize: 12 }}>No entries yet.</p>
+            ) : leaderboard.slice(0, 5).map((u, i) => (
+              <div key={i} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "6px 10px", marginBottom: 4,
+                background: i === 0 ? "rgba(0,255,65,0.06)" : "transparent",
+                border: `1px solid ${i === 0 ? "rgba(0,255,65,0.15)" : "#0f0f1e"}`,
+                borderRadius: 6, fontSize: 12,
+              }}>
+                <span style={{ color: i === 0 ? S.accent : S.muted }}>
+                  {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : `${i + 1}.`} {u.username}
+                </span>
+                <span style={{ color: S.accent, fontWeight: 700 }}>{u.score}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* RIGHT PANEL — Editor */}
+        <div style={{
+          flex: 1, display: "flex", flexDirection: "column",
+          padding: "14px", overflow: "hidden",
+          display: typeof window !== "undefined" && window.innerWidth < 768 && mobilePanel !== "right" ? "none" : "flex",
+        }}>
+          {/* Editor */}
+          <div style={{ flex: 1, minHeight: 0, marginBottom: 12 }}>
+            <CodeEditor
+              value={code}
+              onChange={setCode}
+              disabled={actionsDisabled}
+              timedOut={timedOut}
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div style={{
+            display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0,
+          }}>
+            {[
+              { label: "▶ Run", fn: handleRun, disabled: actionsDisabled, style: {} },
+              { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, style: {} },
+              { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, style: {} },
+              { label: "✅ Submit", fn: handleSubmit, disabled: actionsDisabled || !token, style: { background: "rgba(0,255,65,0.15)", border: "1px solid rgba(0,255,65,0.4)", color: S.accent } },
+              { label: "⏭ Next", fn: loadQuestion, disabled: backendStatus === "waking", style: timedOut ? { background: S.accent, color: "#000", fontWeight: 700, border: "none" } : {} },
+            ].map(({ label, fn, disabled, style }) => (
+              <button key={label} onClick={fn} disabled={disabled} style={{
+                padding: "9px 16px", fontSize: 12, borderRadius: 6,
+                background: "#0c0c1a", color: disabled ? S.muted : S.text,
+                border: "1px solid #1e1e35", cursor: disabled ? "not-allowed" : "pointer",
+                fontFamily: S.font, transition: "all 0.15s", opacity: disabled ? 0.5 : 1,
+                ...style,
+              }}
+                onMouseEnter={e => { if (!disabled) e.currentTarget.style.borderColor = "rgba(0,255,65,0.3)"; }}
+                onMouseLeave={e => { if (!disabled) e.currentTarget.style.borderColor = "#1e1e35"; }}
+              >{label}</button>
+            ))}
+          </div>
         </div>
       </div>
+
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap');
+        * { box-sizing: border-box; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #050508; }
+        ::-webkit-scrollbar-thumb { background: #1e1e35; border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: #2e2e4a; }
+        select option { background: #0a0a14; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        @media (max-width: 768px) {
+          .mobile-toggle { display: flex !important; }
+        }
+        @media (min-width: 769px) {
+          .mobile-toggle { display: none !important; }
+          [data-left] { display: block !important; }
+          [data-right] { display: flex !important; }
+        }
+      `}</style>
     </div>
   );
 }
