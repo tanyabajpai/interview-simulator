@@ -1,70 +1,182 @@
-# Getting Started with Create React App
+# < InterviewSim />
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+> Practice DSA problems with AI-powered feedback, test cases, scoring, and a global leaderboard — no account required.
 
-## Available Scripts
+**Live Demo:** [interview-simulator-frontend.onrender.com](https://interview-simulator-frontend.onrender.com) &nbsp;|&nbsp; **Backend API:** [interview-simulator-backend-6ne6.onrender.com](https://interview-simulator-backend-6ne6.onrender.com/docs)
 
-In the project directory, you can run:
+> ⚠️ Hosted on Render's free tier — the backend may take **20–30 seconds to wake up** on first load. The app will notify you while it's starting.
 
-### `npm start`
+---
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+## Features
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+### 👨‍💻 Coding Environment
+- Syntax-highlighted code editor
+- Run code instantly and see output
+- Structured test cases with pass/fail breakdown
+- Name your function anything — the runner handles it automatically
+- Works as a guest or logged-in user
 
-### `npm test`
+### 🧠 AI Feedback
+- Intelligent per-submission feedback via Claude
+- Highlights logic gaps, edge cases, and optimizations
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+### 📊 Performance Tracking *(login required)*
+- Total attempts and average score
+- Full submission history
 
-### `npm run build`
+### 🏆 Leaderboard
+- Global ranking across all users
+- Updates in real time after each submission
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+### 🔐 Auth System
+- JWT-based login/signup
+- Guest mode — submit and get scored without an account
+- Protected routes for stats and history
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### ⏱️ Interview Simulation
+- Built-in countdown timer per question
+- Simulates real interview pressure
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+### 📚 Question Bank
+- Easy / Medium / Hard difficulty levels
+- Covers core DSA topics: arrays, strings, recursion, sorting, and more
 
-### `npm run eject`
+---
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+## Tech Stack
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+| Layer | Technology |
+|---|---|
+| Frontend | React.js, Axios, custom CSS |
+| Backend | FastAPI (Python) |
+| Database | MongoDB Atlas |
+| Auth | JWT (JSON Web Tokens) |
+| AI Feedback | Anthropic Claude API |
+| Deployment | Render (frontend + backend) |
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+---
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+## Project Structure
 
-## Learn More
+```
+interview-simulator/
+├── frontend/
+│   └── src/
+│       ├── App.js           # Main app — all screens and logic
+│       ├── api.js           # Axios API client + wakeUpBackend utility
+│       └── App.css          # Global styles
+├── backend/
+│   ├── main.py              # FastAPI entry point + CORS + route registration
+│   ├── routes/
+│   │   ├── user.py          # Signup, login, stats, save attempt
+│   │   ├── code.py          # Run code, run tests
+│   │   ├── ai.py            # AI feedback endpoint
+│   │   ├── questions.py     # Question bank by difficulty
+│   │   ├── leaderboard.py   # Global leaderboard
+│   │   └── attempts.py      # Submission history
+│   └── services/
+│       ├── auth_service.py  # Password hashing + JWT
+│       ├── code_execution.py
+│       ├── test_runner.py
+│       ├── scorer.py
+│       ├── question_bank.py
+│       ├── db.py
+│       └── deps.py
+└── README.md
+```
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+---
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+## Local Setup
 
-### Code Splitting
+### 1. Clone
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+```bash
+git clone https://github.com/tanyabajpai/interview-simulator.git
+cd interview-simulator
+```
 
-### Analyzing the Bundle Size
+### 2. Backend
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+```bash
+cd backend
+pip install -r requirements.txt
+```
 
-### Making a Progressive Web App
+Create a `.env` file in `/backend`:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+```env
+MONGO_URI=your_mongodb_atlas_connection_string
+SECRET_KEY=your_jwt_secret
+ANTHROPIC_API_KEY=your_claude_api_key
+```
 
-### Advanced Configuration
+Run:
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+```bash
+uvicorn main:app --reload
+```
 
-### Deployment
+API docs available at `http://localhost:8000/docs`
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+### 3. Frontend
 
-### `npm run build` fails to minify
+```bash
+cd frontend
+npm install
+npm start
+```
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+App runs at `http://localhost:3000`
+
+> If running locally, update `BASE_URL` in `frontend/src/api.js` to `http://localhost:8000`
+
+---
+
+## API Reference
+
+| Method | Endpoint | Auth | Description |
+|---|---|---|---|
+| POST | `/user/signup` | No | Register new user |
+| POST | `/user/login` | No | Login, returns JWT |
+| GET | `/user/stats` | Yes | Total attempts + avg score |
+| POST | `/user/save` | Yes | Save a submission |
+| GET | `/attempts/history` | Yes | Submission history |
+| GET | `/questions/{difficulty}` | No | Get questions by difficulty |
+| POST | `/code/run` | No | Execute code, return output |
+| POST | `/code/test` | No | Run test cases, return score |
+| POST | `/ai/feedback` | No | Get AI feedback on code |
+| GET | `/leaderboard/leaderboard` | No | Global leaderboard |
+| GET | `/health` | No | Health check (wake-up ping) |
+
+---
+
+## Deployment Notes (Render)
+
+Both services are deployed on Render's free tier:
+
+- **Backend** — Python/FastAPI web service. Start command: `uvicorn main:app --host 0.0.0.0 --port $PORT`
+- **Frontend** — Static site built with `npm run build`, served from the `build/` directory
+
+The frontend calls `wakeUpBackend()` before login/signup attempts and on first load, polling `/health` every 3 seconds until the backend responds (up to 60s). This handles Render's cold start gracefully without the user hitting a silent failure.
+
+---
+
+## Roadmap
+
+- [ ] Monaco editor with syntax highlighting
+- [ ] Multi-language support (Java, C++)
+- [ ] AI-generated question suggestions based on weak areas
+- [ ] Real-time multiplayer contests
+- [ ] Video interview simulation mode
+
+---
+
+## Author
+
+**Tanya Bajpai** — [github.com/tanyabajpai](https://github.com/tanyabajpai)
+
+---
+
+⭐ If you found this useful, give it a star!

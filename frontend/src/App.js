@@ -301,6 +301,9 @@ function App() {
   const handleLogin = async () => {
     setAuthError(""); setAuthLoading(true);
     try {
+      // Wake Render backend if it's sleeping (free tier goes cold after 15min)
+      const isUp = await wakeUpBackend();
+      if (!isUp) { setAuthError("Server is unreachable. Please try again in a moment."); setAuthLoading(false); return; }
       const res = await login({ username, password });
       const accessToken = res.data.access_token;
       localStorage.setItem("token", accessToken);
@@ -308,8 +311,15 @@ function App() {
       setToken(accessToken);
       setLoggedInUser(username);
       setScreen("main");
-    } catch {
-      setAuthError("Invalid username or password.");
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 401 || status === 400) {
+        setAuthError("Invalid username or password.");
+      } else if (!err?.response) {
+        setAuthError("Cannot reach server. Is the backend running?");
+      } else {
+        setAuthError("Login failed. Please try again.");
+      }
     } finally { setAuthLoading(false); }
   };
 
@@ -318,6 +328,9 @@ function App() {
     if (!username || !password) { setAuthError("Both fields required."); setAuthLoading(false); return; }
     if (password.length < 4) { setAuthError("Password must be at least 4 characters."); setAuthLoading(false); return; }
     try {
+      // Wake Render backend if it's sleeping (free tier goes cold after 15min)
+      const isUp = await wakeUpBackend();
+      if (!isUp) { setAuthError("Server is unreachable. Please try again in a moment."); setAuthLoading(false); return; }
       await signup({ username, password });
       const res = await login({ username, password });
       const accessToken = res.data.access_token;
@@ -326,8 +339,15 @@ function App() {
       setToken(accessToken);
       setLoggedInUser(username);
       setScreen("main");
-    } catch {
-      setAuthError("Signup failed. Username may already exist.");
+    } catch (err) {
+      const status = err?.response?.status;
+      if (status === 400) {
+        setAuthError("Username already exists. Try a different one.");
+      } else if (!err?.response) {
+        setAuthError("Cannot reach server. Is the backend running?");
+      } else {
+        setAuthError("Signup failed. Please try again.");
+      }
     } finally { setAuthLoading(false); }
   };
 
@@ -362,7 +382,14 @@ function App() {
     setTests([]);
     setActiveTab("tests");
     try {
-      const res = await runTests(code, question.title);
+      // Extract user's function name, rename def + all call sites to 'solution'
+      const fnMatch = code.match(/^def\s+(\w+)\s*\(/m);
+      const normalizedCode = fnMatch
+        ? code
+            .replace(new RegExp("^def\\s+" + fnMatch[1] + "\\s*\\(", "m"), "def solution(")
+            .replace(new RegExp("\\b" + fnMatch[1] + "\\s*\\(", "g"), "solution(")
+        : code;
+      const res = await runTests(normalizedCode, question.title);
       if (res.data.error) {
         setTestError(res.data.error);
         setScore(0);
@@ -391,14 +418,19 @@ function App() {
   };
 
   const handleSubmit = async () => {
-    if (!token) { alert("Please log in to submit!"); return; }
     if (!question) { alert("No question loaded."); return; }
     try {
       // Run tests first if score is not yet available
       let finalScore = score;
       if (finalScore === null) {
         try {
-          const res = await runTests(code, question.title);
+          const fnMatch2 = code.match(/^def\s+(\w+)\s*\(/m);
+          const normalizedCode = fnMatch2
+            ? code
+                .replace(new RegExp("^def\\s+" + fnMatch2[1] + "\\s*\\(", "m"), "def solution(")
+                .replace(new RegExp("\\b" + fnMatch2[1] + "\\s*\\(", "g"), "solution(")
+            : code;
+          const res = await runTests(normalizedCode, question.title);
           setTests(res.data.results || []);
           finalScore = res.data.score ?? 0;
           setScore(finalScore);
@@ -407,10 +439,14 @@ function App() {
           finalScore = 0;
         }
       }
-      await saveAttempt({ question: question.title, score: finalScore });
+      // Only save to DB if logged in; guests still see their score
+      if (token) {
+        await saveAttempt({ question: question.title, score: finalScore });
+        fetchStats(); fetchHistory();
+      }
       setSubmitSuccess(true);
       setTimeout(() => setSubmitSuccess(false), 3000);
-      fetchStats(); fetchLeaderboard(); fetchHistory();
+      fetchLeaderboard();
     } catch (err) {
       const msg = err?.response?.data?.detail || "Submit failed. Please try again.";
       alert(msg);
@@ -715,12 +751,18 @@ function App() {
             </p>
           )}
 
+          {authLoading && (
+            <p style={{ color: S.muted, fontSize: 11, marginBottom: 10, marginTop: -4 }}>
+              ⏳ Waking up server… this may take up to 30s on first load.
+            </p>
+          )}
+
           <div style={{ display: "flex", gap: 10, marginBottom: 12 }}>
             {[
-              { label: authLoading ? "..." : "Login", fn: handleLogin, primary: true },
-              { label: authLoading ? "..." : "Sign Up", fn: handleSignup, primary: false },
-            ].map(({ label, fn, primary }) => (
-              <button key={label} onClick={fn} disabled={authLoading} style={{
+              { id: "login", label: authLoading ? "..." : "Login", fn: handleLogin, primary: true },
+              { id: "signup", label: authLoading ? "..." : "Sign Up", fn: handleSignup, primary: false },
+            ].map(({ id, label, fn, primary }) => (
+              <button key={id} onClick={fn} disabled={authLoading} style={{
                 flex: 1, padding: "11px 0",
                 background: primary ? S.accent : "transparent",
                 color: primary ? "#000" : S.accent,
@@ -1075,10 +1117,10 @@ function App() {
               { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, style: {} },
               { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, style: {} },
               {
-                label: submitSuccess ? "✓ Submitted!" : (!token ? "🔒 Login to Submit" : "✅ Submit"),
-                fn: !token ? () => alert("Please click 'Log in' in the top right to submit your solution.") : handleSubmit,
+                label: submitSuccess ? "✓ Submitted!" : "✅ Submit",
+                fn: handleSubmit,
                 disabled: actionsDisabled,
-                style: { background: "rgba(0,255,65,0.12)", border: "1px solid rgba(0,255,65,0.35)", color: !token ? S.muted : S.accent },
+                style: { background: "rgba(0,255,65,0.12)", border: "1px solid rgba(0,255,65,0.35)", color: S.accent },
               },
               {
                 label: "⏭ Next", fn: loadQuestion,
