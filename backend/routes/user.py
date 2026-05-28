@@ -1,13 +1,9 @@
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
-
 from services.db import users_collection, attempts_collection
 from services.auth_service import hash_password, verify_password, create_access_token
 from services.deps import get_current_user
-
-from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime
-from services.deps import get_current_user
 
 router = APIRouter()
 
@@ -25,6 +21,11 @@ class UserLogin(BaseModel):
     password: str
 
 
+class AttemptData(BaseModel):
+    question: str
+    score: int = 0
+
+
 # =========================
 # SIGNUP
 # =========================
@@ -34,12 +35,10 @@ def signup(data: UserSignup):
         raise HTTPException(status_code=400, detail="User already exists")
 
     hashed = hash_password(data.password)
-
     users_collection.insert_one({
         "username": data.username,
         "password": hashed
     })
-
     return {"message": "User created successfully"}
 
 
@@ -54,7 +53,6 @@ def login(data: UserLogin):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     token = create_access_token({"username": data.username})
-
     return {
         "access_token": token,
         "token_type": "bearer"
@@ -62,35 +60,29 @@ def login(data: UserLogin):
 
 
 # =========================
-# 🔐 SAVE ATTEMPT (PROTECTED)
+# SAVE ATTEMPT (PROTECTED)
 # =========================
-
 @router.post("/save")
-def save_attempt(data: dict, username: str = Depends(get_current_user)):
-    data["username"] = username
-    data["timestamp"] = datetime.utcnow()
-
-    attempts_collection.insert_one(data)
+def save_attempt(data: AttemptData, username: str = Depends(get_current_user)):
+    attempts_collection.insert_one({
+        "username": username,
+        "question": data.question,
+        "score": data.score,
+        "timestamp": datetime.utcnow(),
+    })
     return {"message": "Saved"}
 
+
 # =========================
-# 📊 USER STATS (PROTECTED)
+# USER STATS (PROTECTED)
 # =========================
 @router.get("/stats")
 def get_stats(username: str = Depends(get_current_user)):
     attempts = list(attempts_collection.find({"username": username}))
-
     total = len(attempts)
 
     if total == 0:
-        return {
-            "total_attempts": 0,
-            "avg_score": 0
-        }
+        return {"total_attempts": 0, "avg_score": 0}
 
     avg = sum(a.get("score", 0) for a in attempts) // total
-
-    return {
-        "total_attempts": total,
-        "avg_score": avg
-    }
+    return {"total_attempts": total, "avg_score": avg}

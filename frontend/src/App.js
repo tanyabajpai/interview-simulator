@@ -169,6 +169,7 @@ function App() {
   const [outputLoading, setOutputLoading] = useState(false);
   const [tests, setTests] = useState([]);
   const [testsLoading, setTestsLoading] = useState(false);
+  const [testError, setTestError] = useState("");
   const [score, setScore] = useState(null);
   const [feedback, setFeedback] = useState("");
   const [feedbackLoading, setFeedbackLoading] = useState(false);
@@ -345,8 +346,6 @@ function App() {
   const handleRun = async () => {
     setOutputLoading(true);
     setActiveTab("output");
-    // On mobile: switch to info panel so user sees the result
-    if (isMobile) setMobilePanel("left");
     try {
       const res = await runCode(code);
       setOutput(res.data.output || "(no output)");
@@ -359,17 +358,21 @@ function App() {
   const handleTest = async () => {
     if (!question) return;
     setTestsLoading(true);
+    setTestError("");
+    setTests([]);
     setActiveTab("tests");
-    // On mobile: switch to info panel so user sees test results
-    if (isMobile) setMobilePanel("left");
     try {
       const res = await runTests(code, question.title);
-      setTests(res.data.results || []);
-      setScore(res.data.score ?? 0);
+      if (res.data.error) {
+        setTestError(res.data.error);
+        setScore(0);
+      } else {
+        setTests(res.data.results || []);
+        setScore(res.data.score ?? 0);
+      }
     } catch (err) {
-      console.error("Test error:", err);
-      const msg = err?.response?.data?.detail || "Tests failed to run.";
-      setTests([{ passed: false, input: "Error", expected: "", got: msg }]);
+      const msg = err?.response?.data?.detail || err?.response?.data?.error || "Tests failed. Is the backend running?";
+      setTestError(msg);
       setScore(0);
     } finally { setTestsLoading(false); }
   };
@@ -378,8 +381,6 @@ function App() {
     if (!question) return;
     setFeedbackLoading(true);
     setActiveTab("feedback");
-    // On mobile: switch to info panel so user sees AI feedback
-    if (isMobile) setMobilePanel("left");
     try {
       const res = await getAIFeedback(code, question.title);
       const d = res.data;
@@ -938,6 +939,16 @@ function App() {
               <div>
                 {testsLoading ? (
                   <p style={{ color: S.muted, fontSize: 12 }}>Running tests...</p>
+                ) : testError ? (
+                  <div style={{ background: "rgba(220,53,69,0.08)", border: "1px solid rgba(220,53,69,0.3)", borderRadius: 6, padding: "10px 12px", color: "#ff4d6d", fontSize: 12, lineHeight: 1.7 }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Test Error</div>
+                    <div>{testError}</div>
+                    {testError.includes("solution") && (
+                      <div style={{ marginTop: 8, color: "#aaa", fontSize: 11 }}>
+                        💡 Rename your function to <span style={{ color: "#00ff41", fontFamily: "monospace" }}>def solution(...):</span>
+                      </div>
+                    )}
+                  </div>
                 ) : tests.length === 0 ? (
                   <p style={{ color: S.muted, fontSize: 12 }}>No test results yet. Click 🧪 Test.</p>
                 ) : (
@@ -1042,15 +1053,13 @@ function App() {
           </div>
         </div>
 
-        {/* RIGHT PANEL — Editor */}
+        {/* RIGHT PANEL — Editor + Results */}
         <div style={{
           flex: 1, display: isMobile && mobilePanel !== "right" ? "none" : "flex",
-          flexDirection: "column", padding: "14px",
-          paddingBottom: isMobile ? "70px" : "14px",
-          overflow: "hidden",
+          flexDirection: "column", padding: "14px", overflow: "hidden", gap: 10,
         }}>
-          {/* Editor */}
-          <div style={{ flex: 1, minHeight: 0, marginBottom: 12 }}>
+          {/* Code Editor */}
+          <div style={{ flex: 1, minHeight: 0 }}>
             <CodeEditor
               value={code}
               onChange={setCode}
@@ -1059,20 +1068,26 @@ function App() {
             />
           </div>
 
-          {/* Action Buttons — Desktop only (mobile uses fixed bottom bar) */}
-          {!isMobile && (
-          <div style={{
-            display: "flex", gap: 8, flexWrap: "wrap", flexShrink: 0,
-          }}>
+          {/* Action Buttons — always visible */}
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", flexShrink: 0 }}>
             {[
               { label: "▶ Run", fn: handleRun, disabled: actionsDisabled, style: {} },
               { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled, style: {} },
               { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled, style: {} },
-              { label: "✅ Submit", fn: handleSubmit, disabled: actionsDisabled || !token, style: { background: "rgba(0,255,65,0.15)", border: "1px solid rgba(0,255,65,0.4)", color: S.accent } },
-              { label: "⏭ Next", fn: loadQuestion, disabled: backendStatus === "waking", style: timedOut ? { background: S.accent, color: "#000", fontWeight: 700, border: "none" } : {} },
+              {
+                label: submitSuccess ? "✓ Submitted!" : (!token ? "🔒 Login to Submit" : "✅ Submit"),
+                fn: !token ? () => alert("Please click 'Log in' in the top right to submit your solution.") : handleSubmit,
+                disabled: actionsDisabled,
+                style: { background: "rgba(0,255,65,0.12)", border: "1px solid rgba(0,255,65,0.35)", color: !token ? S.muted : S.accent },
+              },
+              {
+                label: "⏭ Next", fn: loadQuestion,
+                disabled: backendStatus === "waking",
+                style: timedOut ? { background: S.accent, color: "#000", fontWeight: 700, border: "none" } : {},
+              },
             ].map(({ label, fn, disabled, style }) => (
               <button key={label} onClick={fn} disabled={disabled} style={{
-                padding: "9px 16px", fontSize: 12, borderRadius: 6,
+                padding: "8px 13px", fontSize: 12, borderRadius: 6,
                 background: "#0c0c1a", color: disabled ? S.muted : S.text,
                 border: "1px solid #1e1e35", cursor: disabled ? "not-allowed" : "pointer",
                 fontFamily: S.font, transition: "all 0.15s", opacity: disabled ? 0.5 : 1,
@@ -1083,57 +1098,102 @@ function App() {
               >{label}</button>
             ))}
           </div>
-          )}
+
+          {/* Inline Results Panel */}
+          <div style={{
+            flexShrink: 0, background: "#060610",
+            border: "1px solid #1a1a2e", borderRadius: 10, overflow: "hidden",
+          }}>
+            {/* Result Tabs */}
+            <div style={{ display: "flex", borderBottom: "1px solid #1a1a2e" }}>
+              {[
+                { id: "output", label: "Output" },
+                { id: "tests", label: `Tests${tests.length ? ` (${tests.length})` : ""}` },
+                { id: "feedback", label: "AI" },
+              ].map(tab => (
+                <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
+                  flex: 1, padding: "7px 4px", fontSize: 11, border: "none",
+                  background: activeTab === tab.id ? "rgba(0,255,65,0.08)" : "transparent",
+                  color: activeTab === tab.id ? S.accent : S.muted,
+                  borderBottom: `2px solid ${activeTab === tab.id ? S.accent : "transparent"}`,
+                  cursor: "pointer", fontFamily: S.font, transition: "all 0.15s",
+                }}>{tab.label}</button>
+              ))}
+            </div>
+
+            {/* Output */}
+            {activeTab === "output" && (
+              <pre style={{
+                color: "#00ff41", padding: "10px 12px", margin: 0,
+                fontSize: 12, whiteSpace: "pre-wrap", wordBreak: "break-all",
+                overflowY: "auto", maxHeight: 160, lineHeight: 1.6, background: "transparent",
+              }}>
+                {outputLoading ? "Running..." : (output || "(no output yet — click ▶ Run)")}
+              </pre>
+            )}
+
+            {/* Tests */}
+            {activeTab === "tests" && (
+              <div style={{ overflowY: "auto", maxHeight: 160, padding: "8px 10px" }}>
+                {testsLoading ? (
+                  <p style={{ color: S.muted, fontSize: 12, margin: 0 }}>Running tests...</p>
+                ) : testError ? (
+                  <div style={{
+                    background: "rgba(220,53,69,0.08)", border: "1px solid rgba(220,53,69,0.3)",
+                    borderRadius: 6, padding: "10px 12px", color: "#ff4d6d", fontSize: 12, lineHeight: 1.7,
+                  }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>⚠️ Test Error</div>
+                    <div>{testError}</div>
+                    {testError.includes("solution") && (
+                      <div style={{ marginTop: 8, color: "#aaa", fontSize: 11 }}>
+                        💡 Rename your function to <span style={{ color: "#00ff41", fontFamily: "monospace" }}>def solution(...):</span> and try again.
+                      </div>
+                    )}
+                  </div>
+                ) : tests.length === 0 ? (
+                  <p style={{ color: S.muted, fontSize: 12, margin: 0 }}>No results yet — click 🧪 Test.</p>
+                ) : (
+                  <>
+                    {tests.map((t, i) => (
+                      <div key={i} style={{
+                        display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "5px 8px", marginBottom: 4,
+                        background: t.passed ? "rgba(0,255,65,0.05)" : "rgba(220,53,69,0.08)",
+                        border: `1px solid ${t.passed ? "rgba(0,255,65,0.2)" : "rgba(220,53,69,0.25)"}`,
+                        borderRadius: 6, fontSize: 11,
+                      }}>
+                        <span style={{ color: S.muted }}>
+                          {t.input != null ? `input: ${t.input}` : `Hidden test ${i + 1}`}
+                        </span>
+                        <span style={{ color: t.passed ? S.accent : "#ff4d6d", fontWeight: 700 }}>
+                          {t.passed ? "✓ PASS" : "✗ FAIL"}
+                        </span>
+                      </div>
+                    ))}
+                    {score !== null && (
+                      <div style={{
+                        marginTop: 8, padding: "6px 10px", textAlign: "center",
+                        background: "rgba(0,255,65,0.08)", border: "1px solid rgba(0,255,65,0.2)",
+                        borderRadius: 6, color: S.accent, fontWeight: 700, fontSize: 13,
+                      }}>Score: {score} / 100</div>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* AI Feedback */}
+            {activeTab === "feedback" && (
+              <div style={{
+                overflowY: "auto", maxHeight: 160, padding: "10px 12px",
+                fontSize: 12, lineHeight: 1.7, color: S.text, whiteSpace: "pre-wrap",
+              }}>
+                {feedbackLoading ? "🤖 Analyzing..." : (feedback || "Click 🤖 AI to get feedback.")}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-
-      {/* MOBILE FIXED BOTTOM ACTION BAR */}
-      {isMobile && (
-        <div style={{
-          position: "fixed", bottom: 0, left: 0, right: 0, zIndex: 100,
-          background: "#07070f", borderTop: "1px solid #1a1a2e",
-          display: "flex", gap: 0, flexShrink: 0,
-          paddingBottom: "env(safe-area-inset-bottom)",
-        }}>
-          {[
-            { label: "▶ Run", fn: handleRun, disabled: actionsDisabled },
-            { label: "🧪 Test", fn: handleTest, disabled: actionsDisabled },
-            { label: "🤖 AI", fn: handleAI, disabled: actionsDisabled },
-            {
-              label: "✅ Submit", fn: handleSubmit,
-              disabled: actionsDisabled || !token,
-              highlight: true,
-            },
-            {
-              label: "⏭ Next", fn: loadQuestion,
-              disabled: backendStatus === "waking",
-              pulse: timedOut,
-            },
-          ].map(({ label, fn, disabled, highlight, pulse }) => (
-            <button
-              key={label}
-              onClick={fn}
-              disabled={disabled}
-              style={{
-                flex: 1, padding: "11px 4px", fontSize: 11,
-                background: pulse
-                  ? S.accent
-                  : highlight
-                  ? "rgba(0,255,65,0.1)"
-                  : "transparent",
-                color: pulse ? "#000" : highlight ? S.accent : disabled ? S.muted : S.text,
-                border: "none",
-                borderRight: "1px solid #1a1a2e",
-                cursor: disabled ? "not-allowed" : "pointer",
-                fontFamily: S.font,
-                fontWeight: pulse ? 700 : 400,
-                opacity: disabled ? 0.4 : 1,
-                transition: "all 0.15s",
-              }}
-            >{label}</button>
-          ))}
-        </div>
-      )}
 
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500;600;700&display=swap');
